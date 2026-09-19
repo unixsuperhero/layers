@@ -669,6 +669,7 @@ try {
   // scenes and a "dropped 0" message
   const examplePath = join(__dirname, "..", "examples", "presentation.example-ruby.json");
   await page.setInputFiles("#scenes-import-input", examplePath);
+  await page.waitForFunction(() => window.__layers.scenes.list().length === 4); // FileReader is async
   const afterImport = await page.evaluate(() => window.__layers.scenes.list());
   check("import via the real file input yields 4 scenes", afterImport.length === 4);
   const importMessage = await page.locator("#scenes-message").textContent();
@@ -693,7 +694,12 @@ try {
 
   // import of malformed JSON shows an inline error and leaves the list intact
   const idsBeforeBadImport = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  const messageBeforeBadImport = await page.locator("#scenes-message").textContent();
   await page.setInputFiles("#scenes-import-input", { name: "bad.json", mimeType: "application/json", buffer: Buffer.from("{ not valid json") });
+  await page.waitForFunction(
+    (prev) => document.querySelector("#scenes-message")?.textContent !== prev,
+    messageBeforeBadImport,
+  ); // FileReader is async
   const errorMessage = await page.locator("#scenes-message").textContent();
   check("malformed JSON import shows an inline error message", errorMessage.length > 0 && !/imported/.test(errorMessage));
   const idsAfterBadImport = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);

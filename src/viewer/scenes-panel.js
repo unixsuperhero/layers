@@ -95,7 +95,13 @@ export function createScenesPanel(container, handlers) {
     row.addEventListener("dragover", (event) => event.preventDefault());
     row.addEventListener("drop", (event) => {
       event.preventDefault();
-      if (dragId && dragId !== scene.id) handlers.onMove(dragId, i);
+      if (dragId && dragId !== scene.id) {
+        // moveScene's toIndex is the position AFTER the source is removed — dropping on a
+        // row below the source needs to shift left by one to land there, not after it.
+        const sourceIdx = ctx.presentation.scenes.findIndex((s) => s.id === dragId);
+        const toIndex = sourceIdx !== -1 && sourceIdx < i ? i - 1 : i;
+        handlers.onMove(dragId, toIndex);
+      }
       dragId = null;
     });
 
