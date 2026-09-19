@@ -5,6 +5,7 @@ import {
   parseMarkKey,
   itemsOfLayer,
   defaultSelection,
+  isDefaultOff,
   checkState,
   setKeys,
   pruneSelection,
@@ -73,6 +74,28 @@ test("defaultSelection: static layers fully on, dynamic layers off", () => {
   const selection = defaultSelection(doc);
   assert.equal(selection.has(markKey("defs.methods", doc.layers[0].marks[0])), true);
   assert.equal(selection.has(markKey("exec.path", doc.layers[1].marks[0])), false);
+});
+
+test("defaultSelection: effects.* layers are off by default even though they're static (docs/ROUND-4.md)", () => {
+  const doc = {
+    layers: [
+      { id: "defs.methods", kind: "static", marks: [{ file: "a.rb", start: 0, end: 5 }] },
+      { id: "effects.io", kind: "static", marks: [{ file: "a.rb", start: 5, end: 10 }] },
+      { id: "defs.constants", kind: "static", marks: [{ file: "a.rb", start: 10, end: 15 }] },
+    ],
+  };
+  const selection = defaultSelection(doc);
+  assert.equal(selection.has(markKey("defs.methods", doc.layers[0].marks[0])), true);
+  assert.equal(selection.has(markKey("effects.io", doc.layers[1].marks[0])), false);
+  assert.equal(selection.has(markKey("defs.constants", doc.layers[2].marks[0])), true);
+});
+
+test("isDefaultOff: dynamic kind or an effects.* id, data-driven (not a hardcoded id list)", () => {
+  assert.equal(isDefaultOff({ id: "exec.path", kind: "dynamic" }), true);
+  assert.equal(isDefaultOff({ id: "effects.io", kind: "static" }), true);
+  assert.equal(isDefaultOff({ id: "effects.anything.new", kind: "static" }), true);
+  assert.equal(isDefaultOff({ id: "defs.constants", kind: "static" }), false);
+  assert.equal(isDefaultOff({ id: "vars.locals", kind: "static" }), false);
 });
 
 test("checkState: all / none / some", () => {

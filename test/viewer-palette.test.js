@@ -18,11 +18,28 @@ test("is deterministic and order-independent on input", () => {
   assert.deepEqual(a, b);
 });
 
-test("wraps around the palette for many layers", () => {
+test("many layers sharing one namespace still get pairwise-distinct colours", () => {
   const ids = Array.from({ length: 15 }, (_, i) => `ns.layer${i}`);
   const colours = assignPalette(ids);
   assert.equal(Object.keys(colours).length, 15);
-  const first = ids.slice().sort()[0];
-  const wrapped = ids.slice().sort()[12];
-  assert.equal(colours[first], colours[wrapped]);
+  const distinct = new Set(Object.values(colours));
+  assert.equal(distinct.size, 15);
+});
+
+test("namespace-aware: the ~17 real layer ids (defs/vars/refs/exec/effects) are all pairwise distinct", () => {
+  const ids = [
+    "defs.attributes", "defs.classes", "defs.methods", "defs.constants",
+    "vars.locals", "vars.ivars", "vars.temps",
+    "refs.calls", "refs.constants",
+    "exec.path",
+    "effects.state", "effects.global", "effects.args", "effects.io", "effects.control", "effects.calls", "effects.unknown",
+  ];
+  const colours = assignPalette(ids);
+  const distinct = new Set(Object.values(colours));
+  assert.equal(distinct.size, ids.length);
+});
+
+test("layers in different namespaces don't share a colour even when few in each", () => {
+  const colours = assignPalette(["defs.classes", "vars.locals", "refs.calls", "exec.path", "effects.io"]);
+  assert.equal(new Set(Object.values(colours)).size, 5);
 });

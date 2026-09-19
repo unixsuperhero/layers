@@ -38,11 +38,18 @@ export function itemsOfLayer(layer) {
   return items;
 }
 
-// Default selection: every mark of every static layer on, dynamic (exec.*) layers off.
+// A layer starts unticked: dynamic layers (exec.*) always have, and now effects.* too
+// (docs/ROUND-4.md "B. Web viewer") — they overlap other layers by design, so they'd
+// otherwise clutter every file by default.
+export function isDefaultOff(layer) {
+  return layer.kind === "dynamic" || layer.id.startsWith("effects.");
+}
+
+// Default selection: every mark of every default-on layer, per isDefaultOff above.
 export function defaultSelection(doc) {
   const keys = new Set();
   for (const layer of doc.layers) {
-    if (layer.kind !== "static") continue;
+    if (isDefaultOff(layer)) continue;
     for (const mark of layer.marks) keys.add(markKey(layer.id, mark));
   }
   return keys;
