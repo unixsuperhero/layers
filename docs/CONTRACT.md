@@ -106,6 +106,49 @@ createStepper(trace) → {
 //   Empty trace: length 0, cursor 0, current()/step functions return null, localsAt → {}, stack → [].
 ```
 
+## Round 3 additions
+
+### `mark.data.scope`
+
+`data.scope` = symbol of the innermost enclosing METHOD (`"Invoice#summary"`), or `null` for
+file/class-level marks. A `defs.methods` mark's scope is the method itself. Optional for
+producers; consumers treat a missing value as `null`. No schema change (`data` is a free object).
+
+### Bundle — one file holding everything
+
+```js
+bundle = {
+  bundle: 1,                                     // format version
+  project:  { name, root, files: ["invoice.rb", …], entry: "main.rb" | null },
+  sources:  { "invoice.rb": "<full text>" },     // every file in project.files
+  doc:      { …layers.json… },                   // must validate; sha256(utf8(sources[f])) === doc.files[f].sha
+  presentation: { version: 1, scenes: [] },      // optional, default empty
+  selection: [markKey…] | null,                  // optional
+  ui: { file, solo, focus, scene, i, railWidth } | null   // optional, all keys optional
+}
+```
+
+### calltree.js
+
+```js
+buildCallTree(trace) → node            // root
+node = {
+  kind: "root" | "call" | "block",
+  symbol: string | null,               // call: event.symbol; block/root: null
+  recv:   string | null,
+  enter:  number,                      // index of the call/b_call event (root: 0)
+  exit:   number,                      // index of the matching return/b_return (root: last index);
+                                       //   unterminated frame (raise / truncated trace) → last index
+  site:   { file, start, end } | null, // the nearest PRECEDING `line` event in the parent frame = call site
+  def:    { file, start, end },        // span of the call/b_call event itself (root: first event's span)
+  value:  string | null,               // from the matching return event
+  depth:  number,
+  children: node[]                     // in execution order
+}
+frameAt(root, i) → node                // innermost node with enter <= i <= exit
+//   Empty trace → root with enter 0, exit -1, children [].
+```
+
 ## Tests
 
 `node --test` (built-in runner, `test/*.test.js`). Tests load the generated

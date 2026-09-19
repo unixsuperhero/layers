@@ -1,6 +1,14 @@
 {
   "producer": "fixture@1",
   "comment": "marks: [layer, file, line, text, symbol, role, nth?]  — text is located on that line (nth occurrence, default 1); byte offsets are computed by scripts/build-fixture.mjs",
+  "scopesComment": "scopes: [file, firstLine, lastLine, symbol] — every mark whose start falls inside gets data.scope = symbol (else null)",
+  "scopes": [
+    ["invoice.rb", 5,  7,  "Invoice#initialize"],
+    ["invoice.rb", 9,  16, "Invoice#summary"],
+    ["invoice.rb", 18, 20, "Invoice#overdue?"],
+    ["mailer.rb",  4,  7,  "Mailer#notify"],
+    ["mailer.rb",  9,  11, "Mailer#deliver"]
+  ],
   "marks": [
     ["defs.classes",    "invoice.rb", 2,  "Invoice",    "Invoice",                 "definition"],
     ["defs.classes",    "mailer.rb",  3,  "Mailer",     "Mailer",                  "definition"],

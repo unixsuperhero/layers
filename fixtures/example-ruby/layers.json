@@ -26,7 +26,9 @@
           "end": 89,
           "symbol": "Invoice#items",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         }
       ]
     },
@@ -41,7 +43,9 @@
           "end": 68,
           "symbol": "Invoice",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         },
         {
           "file": "mailer.rb",
@@ -49,7 +53,9 @@
           "end": 40,
           "symbol": "Mailer",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         }
       ]
     },
@@ -64,7 +70,9 @@
           "end": 107,
           "symbol": "Invoice#initialize",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         },
         {
           "file": "invoice.rb",
@@ -72,7 +80,9 @@
           "end": 154,
           "symbol": "Invoice#summary",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -80,7 +90,9 @@
           "end": 288,
           "symbol": "Invoice#overdue?",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": "Invoice#overdue?"
+          }
         },
         {
           "file": "mailer.rb",
@@ -88,7 +100,9 @@
           "end": 53,
           "symbol": "Mailer#notify",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -96,7 +110,9 @@
           "end": 128,
           "symbol": "Mailer#deliver",
           "role": "definition",
-          "data": {}
+          "data": {
+            "scope": "Mailer#deliver"
+          }
         }
       ]
     },
@@ -111,7 +127,9 @@
           "end": 114,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         },
         {
           "file": "invoice.rb",
@@ -119,7 +137,9 @@
           "end": 133,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         },
         {
           "file": "invoice.rb",
@@ -127,7 +147,9 @@
           "end": 139,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         },
         {
           "file": "invoice.rb",
@@ -135,7 +157,9 @@
           "end": 154,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -143,7 +167,9 @@
           "end": 168,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -151,7 +177,9 @@
           "end": 193,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -159,7 +187,9 @@
           "end": 213,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -167,7 +197,9 @@
           "end": 221,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -175,7 +207,9 @@
           "end": 241,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -183,7 +217,9 @@
           "end": 266,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -191,7 +227,9 @@
           "end": 272,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "mailer.rb",
@@ -199,7 +237,9 @@
           "end": 62,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -207,7 +247,9 @@
           "end": 89,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -215,7 +257,9 @@
           "end": 107,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -223,7 +267,9 @@
           "end": 113,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -231,7 +277,9 @@
           "end": 134,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#deliver"
+          }
         },
         {
           "file": "mailer.rb",
@@ -239,7 +287,9 @@
           "end": 148,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#deliver"
+          }
         },
         {
           "file": "mailer.rb",
@@ -247,7 +297,9 @@
           "end": 154,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": "Mailer#deliver"
+          }
         },
         {
           "file": "main.rb",
@@ -255,7 +307,9 @@
           "end": 85,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         },
         {
           "file": "main.rb",
@@ -263,7 +317,9 @@
           "end": 112,
           "symbol": null,
           "role": "executed",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         }
       ]
     },
@@ -278,7 +334,9 @@
           "end": 178,
           "symbol": "Invoice#items",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -286,7 +344,9 @@
           "end": 300,
           "symbol": "Invoice#summary",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": "Invoice#overdue?"
+          }
         },
         {
           "file": "mailer.rb",
@@ -294,7 +354,9 @@
           "end": 89,
           "symbol": "Invoice#summary",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -302,7 +364,9 @@
           "end": 101,
           "symbol": "Mailer#deliver",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "main.rb",
@@ -310,7 +374,9 @@
           "end": 75,
           "symbol": "Invoice#initialize",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         },
         {
           "file": "main.rb",
@@ -318,7 +384,9 @@
           "end": 103,
           "symbol": "Mailer#notify",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         }
       ]
     },
@@ -333,7 +401,9 @@
           "end": 71,
           "symbol": "Invoice",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         },
         {
           "file": "main.rb",
@@ -341,7 +411,9 @@
           "end": 92,
           "symbol": "Mailer",
           "role": "reference",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         }
       ]
     },
@@ -356,7 +428,9 @@
           "end": 125,
           "symbol": "Invoice@items",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         }
       ]
     },
@@ -371,7 +445,9 @@
           "end": 113,
           "symbol": "Invoice#initialize/items",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         },
         {
           "file": "invoice.rb",
@@ -379,7 +455,9 @@
           "end": 133,
           "symbol": "Invoice#initialize/items",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Invoice#initialize"
+          }
         },
         {
           "file": "invoice.rb",
@@ -387,7 +465,9 @@
           "end": 164,
           "symbol": "Invoice#summary/total",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -395,7 +475,9 @@
           "end": 192,
           "symbol": "Invoice#summary/item",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -403,7 +485,9 @@
           "end": 205,
           "symbol": "Invoice#summary/total",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -411,7 +495,9 @@
           "end": 213,
           "symbol": "Invoice#summary/item",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -419,7 +505,9 @@
           "end": 231,
           "symbol": "Invoice#summary/label",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -427,7 +515,9 @@
           "end": 254,
           "symbol": "Invoice#summary/label",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -435,7 +525,9 @@
           "end": 264,
           "symbol": "Invoice#summary/total",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "mailer.rb",
@@ -443,7 +535,9 @@
           "end": 61,
           "symbol": "Mailer#notify/invoice",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -451,7 +545,9 @@
           "end": 71,
           "symbol": "Mailer#notify/body",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -459,7 +555,9 @@
           "end": 81,
           "symbol": "Mailer#notify/invoice",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -467,7 +565,9 @@
           "end": 106,
           "symbol": "Mailer#notify/body",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -475,7 +575,9 @@
           "end": 133,
           "symbol": "Mailer#deliver/body",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Mailer#deliver"
+          }
         },
         {
           "file": "mailer.rb",
@@ -483,7 +585,9 @@
           "end": 148,
           "symbol": "Mailer#deliver/body",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Mailer#deliver"
+          }
         },
         {
           "file": "main.rb",
@@ -491,7 +595,9 @@
           "end": 61,
           "symbol": "main/invoice",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         },
         {
           "file": "main.rb",
@@ -499,7 +605,9 @@
           "end": 111,
           "symbol": "main/invoice",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": null
+          }
         }
       ]
     },
@@ -514,7 +622,9 @@
           "end": 231,
           "symbol": "Invoice#summary/label",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "invoice.rb",
@@ -522,7 +632,9 @@
           "end": 254,
           "symbol": "Invoice#summary/label",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Invoice#summary"
+          }
         },
         {
           "file": "mailer.rb",
@@ -530,7 +642,9 @@
           "end": 71,
           "symbol": "Mailer#notify/body",
           "role": "write",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         },
         {
           "file": "mailer.rb",
@@ -538,7 +652,9 @@
           "end": 106,
           "symbol": "Mailer#notify/body",
           "role": "read",
-          "data": {}
+          "data": {
+            "scope": "Mailer#notify"
+          }
         }
       ]
     }

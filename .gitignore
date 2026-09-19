@@ -3,3 +3,4 @@ dist/
 .DS_Store
 scripts/smoke-out/
 scripts/guide-out/
+.layers-work/

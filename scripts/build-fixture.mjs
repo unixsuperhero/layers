@@ -52,10 +52,18 @@ function trimmedLine(file, line) {
   return { start, end };
 }
 
+function scopeOf(file, start) {
+  const { lineStarts } = sources[file];
+  let line = lineStarts.findIndex((ls) => ls > start);
+  line = line === -1 ? lineStarts.length : line; // 1-based line containing `start`
+  const hit = (spec.scopes ?? []).find(([f, first, last]) => f === file && first <= line && line <= last);
+  return hit ? hit[3] : null;
+}
+
 const byLayer = new Map();
 function addMark(layerId, kind, mark) {
   if (!byLayer.has(layerId)) byLayer.set(layerId, { id: layerId, kind, producer: spec.producer, marks: [] });
-  byLayer.get(layerId).marks.push(mark);
+  byLayer.get(layerId).marks.push({ ...mark, data: { ...mark.data, scope: scopeOf(mark.file, mark.start) } });
 }
 
 for (const [layer, file, line, text, symbol, role, nth] of spec.marks) {
