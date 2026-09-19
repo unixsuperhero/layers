@@ -159,6 +159,93 @@ export function layerStylesheet(layers, colours) {
   return rules.join("\n");
 }
 
+const STEP_BUTTONS = [
+  ["first", "First (Home)", "⏮"],
+  ["stepBackOver", "Step back over (p)", "⇤"],
+  ["prev", "Prev (← / k)", "←"],
+  ["next", "Next (→ / j)", "→"],
+  ["stepOver", "Step over (n)", "⇥"],
+  ["stepOut", "Step out (o)", "↰"],
+  ["last", "Last (End)", "⏭"],
+];
+
+export function renderStepperPanel(container, { stepper, changed, onAction, onSlide, onFrameJump }) {
+  container.innerHTML = "";
+  const h = document.createElement("h2");
+  h.textContent = "Stepper";
+  container.appendChild(h);
+
+  const controls = document.createElement("div");
+  controls.className = "stepper-controls";
+  for (const [action, title, label] of STEP_BUTTONS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = title;
+    btn.textContent = label;
+    btn.addEventListener("click", () => onAction(action));
+    controls.appendChild(btn);
+  }
+  container.appendChild(controls);
+
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.className = "step-slider";
+  slider.min = "0";
+  slider.max = String(Math.max(0, stepper.length - 1));
+  slider.value = String(stepper.cursor);
+  slider.addEventListener("input", () => onSlide(Number(slider.value)));
+  container.appendChild(slider);
+
+  const event = stepper.current();
+
+  const status = document.createElement("div");
+  status.className = "step-status";
+  status.textContent = `event ${stepper.cursor}/${stepper.length} · ${event.event} · depth ${event.depth}`;
+  container.appendChild(status);
+
+  if (event.event === "call" || event.event === "b_call") {
+    const sym = document.createElement("div");
+    sym.className = "step-symbol";
+    sym.textContent = event.symbol ? `${event.symbol}${event.recv ? ` (recv ${event.recv})` : ""}` : "(block)";
+    container.appendChild(sym);
+  } else if (event.event === "return" || event.event === "b_return") {
+    const val = document.createElement("div");
+    val.className = "step-value";
+    val.textContent = event.value;
+    container.appendChild(val);
+  }
+
+  const stackH = document.createElement("h3");
+  stackH.textContent = "Stack";
+  container.appendChild(stackH);
+  const stack = stepper.stack();
+  stack.forEach((frame, i) => {
+    const row = document.createElement("div");
+    row.className = "step-frame" + (i === stack.length - 1 ? " current" : "");
+    row.textContent = frame.symbol ?? "(block)";
+    row.addEventListener("click", () => onFrameJump(frame));
+    container.appendChild(row);
+  });
+
+  const localsH = document.createElement("h3");
+  localsH.textContent = "Locals";
+  container.appendChild(localsH);
+  const table = document.createElement("table");
+  table.className = "step-locals";
+  for (const [name, value] of Object.entries(stepper.localsAt())) {
+    const row = document.createElement("tr");
+    row.dataset.name = name;
+    if (changed.has(name)) row.className = "changed";
+    const nameCell = document.createElement("td");
+    nameCell.textContent = name;
+    const valueCell = document.createElement("td");
+    valueCell.textContent = value;
+    row.append(nameCell, valueCell);
+    table.appendChild(row);
+  }
+  container.appendChild(table);
+}
+
 function refRow(ref, sources, offsets, onJump) {
   const charStart = offsets[ref.file].byteToChar(ref.start);
   const line = lineOfOffset(sources[ref.file], charStart);

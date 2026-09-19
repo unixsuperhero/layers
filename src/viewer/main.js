@@ -3,10 +3,32 @@ import { createEditor } from "./editor.js";
 import { createNav, decideJump } from "./nav.js";
 import { assignPalette } from "./palette.js";
 import { marksAtPosition, innermostSymbol } from "./marks-at.js";
+import { diffLocals } from "./locals-diff.js";
 import { flatten } from "../core/flatten.js";
-import { buildLayout, renderFileList, renderFileTabs, renderLayerPanel, renderSymbolPanel, layerStylesheet } from "./panels.js";
+import { createStepper } from "../core/stepper.js";
+import {
+  buildLayout,
+  renderFileList,
+  renderFileTabs,
+  renderLayerPanel,
+  renderSymbolPanel,
+  renderStepperPanel,
+  layerStylesheet,
+} from "./panels.js";
 
 const DEFAULT_PROJECT = "fixtures/example-ruby";
+
+const STEP_KEYS = {
+  ArrowLeft: "prev",
+  k: "prev",
+  ArrowRight: "next",
+  j: "next",
+  n: "stepOver",
+  p: "stepBackOver",
+  o: "stepOut",
+  Home: "first",
+  End: "last",
+};
 
 function renderError(app, errors) {
   app.innerHTML = "";
@@ -32,7 +54,7 @@ function injectStylesheet(css) {
   document.head.appendChild(style);
 }
 
-function boot(app, projectDir, { project, doc, sources, offsets, index }, requestedFile) {
+function boot(app, projectDir, { project, doc, sources, offsets, index }, requestedFile, requestedI) {
   const colours = assignPalette(doc.layers.map((l) => l.id));
   injectStylesheet(layerStylesheet(doc.layers, colours));
 
@@ -44,6 +66,21 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   let activeFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
   let selectedSymbol = null;
   let clickableMarks = []; // char-offset marks of enabled, non-exec layers in the active file
+
+  const stepper = doc.trace && doc.trace.length ? createStepper(doc.trace) : null;
+  // Stepper starts driving the editor (file switches, decoration, URL `i=`) only once the
+  // user interacts with it, or `i=` was present on load — so the default view is unchanged.
+  let stepperActive = false;
+  let lastStepperLocals = null;
+
+  if (stepper && requestedI !== null) {
+    const i = Number(requestedI);
+    if (Number.isInteger(i)) {
+      stepper.goto(i);
+      stepperActive = true;
+      activeFile = stepper.current().file;
+    }
+  }
 
   const editor = createEditor(layout.editorEl, { onClick: handleClick });
   const nav = createNav({ index, onNavigate });
@@ -98,6 +135,19 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     editor.setExecDecorations(execRanges, execEnabled);
 
     paintSelection();
+    paintStepper();
+  }
+
+  // "current statement" decoration: only in the file the stepper is currently on, and only
+  // once the stepper is active (unstarted stepper must not mark up the default-opened file).
+  function paintStepper() {
+    if (!stepper) return;
+    const event = stepper.current();
+    if (!stepperActive || !event || event.file !== activeFile) {
+      editor.setStepperDecoration(null);
+      return;
+    }
+    editor.setStepperDecoration(offsets[activeFile].byteToChar(event.start), offsets[activeFile].byteToChar(event.end));
   }
 
   function renderTabs() {
@@ -109,6 +159,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     const params = new URLSearchParams();
     params.set("project", projectDir);
     params.set("file", activeFile);
+    if (stepper && stepperActive) params.set("i", String(stepper.cursor));
     history.replaceState(null, "", `?${params.toString()}`);
   }
 
@@ -214,16 +265,76 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     selectSymbol(null);
   }
 
+  function renderStepper() {
+    if (!stepper) return;
+    const locals = stepper.localsAt();
+    const changed = lastStepperLocals ? diffLocals(lastStepperLocals, locals) : new Set();
+    lastStepperLocals = locals;
+    renderStepperPanel(layout.stepperEl, {
+      stepper,
+      changed,
+      onAction: runStepperAction,
+      onSlide: gotoStepper,
+      onFrameJump: (frame) => jumpToRef({ file: frame.file, start: frame.start, end: frame.end }),
+    });
+  }
+
+  // Stepping never pushes jump history (only explicit jumps, e.g. a stack-frame click, do).
+  function syncStepperToEditor() {
+    const event = stepper.current();
+    if (event.file !== activeFile) {
+      openFile(event.file);
+    } else {
+      paintStepper();
+      syncURL();
+    }
+    editor.scrollIntoView(offsets[event.file].byteToChar(event.start));
+  }
+
+  function stepAction(fn) {
+    stepperActive = true;
+    fn();
+    renderStepper();
+    syncStepperToEditor();
+  }
+
+  function gotoStepper(i) {
+    stepAction(() => stepper.goto(i));
+  }
+
+  function runStepperAction(id) {
+    stepAction(() => {
+      if (id === "first") stepper.goto(0);
+      else if (id === "last") stepper.goto(stepper.length - 1);
+      else stepper[id]();
+    });
+  }
+
+  function isBlockingFocus() {
+    const el = document.activeElement;
+    if (!el || el.classList?.contains("step-slider")) return false;
+    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
+  }
+
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       clearSelection();
+      return;
     } else if (event.altKey && event.key === "ArrowLeft") {
       event.preventDefault();
       nav.back();
+      return;
     } else if (event.altKey && event.key === "ArrowRight") {
       event.preventDefault();
       nav.forward();
+      return;
     }
+
+    if (!stepper || isBlockingFocus()) return;
+    const action = STEP_KEYS[event.key];
+    if (!action) return;
+    event.preventDefault();
+    runStepperAction(action);
   });
 
   layout.backBtn.addEventListener("click", () => nav.back());
@@ -232,6 +343,12 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   renderLayers();
   openFile(activeFile);
   selectSymbol(null);
+
+  if (stepper) {
+    layout.stepperEl.hidden = false;
+    renderStepper();
+    if (stepperActive) editor.scrollIntoView(offsets[activeFile].byteToChar(stepper.current().start));
+  }
 
   window.__layers = {
     state: {
@@ -258,6 +375,17 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     jumpToSymbol,
     back: () => nav.back(),
     forward: () => nav.forward(),
+    stepper: stepper && {
+      get cursor() {
+        return stepper.cursor;
+      },
+      goto: gotoStepper,
+      next: () => runStepperAction("next"),
+      prev: () => runStepperAction("prev"),
+      stepOver: () => runStepperAction("stepOver"),
+      stepBackOver: () => runStepperAction("stepBackOver"),
+      stepOut: () => runStepperAction("stepOut"),
+    },
   };
 }
 
@@ -279,7 +407,7 @@ async function main() {
     return;
   }
 
-  boot(app, projectDir, result, params.get("file"));
+  boot(app, projectDir, result, params.get("file"), params.get("i"));
 }
 
 main();
