@@ -1,0 +1,1060 @@
+{
+  "bundle": 1,
+  "project": {
+    "name": "example-ruby",
+    "root": "src",
+    "files": [
+      "invoice.rb",
+      "mailer.rb",
+      "main.rb"
+    ],
+    "entry": "main.rb"
+  },
+  "sources": {
+    "invoice.rb": "# Invoice — café billing ☕ (multibyte on purpose)\nclass Invoice\n  attr_reader :items\n\n  def initialize(items)\n    @items = items\n  end\n\n  def summary\n    total = 0\n    items.each do |item|\n      total += item\n    end\n    label = \"Total\"\n    \"#{label}: #{total}\"\n  end\n\n  def overdue?\n    summary.length > 10\n  end\nend\n",
+    "mailer.rb": "require_relative \"invoice\"\n\nclass Mailer\n  def notify(invoice)\n    body = invoice.summary\n    deliver(body)\n  end\n\n  def deliver(body)\n    puts body\n  end\nend\n",
+    "main.rb": "require_relative \"invoice\"\nrequire_relative \"mailer\"\n\ninvoice = Invoice.new([10, 32])\nMailer.new.notify(invoice)\n"
+  },
+  "doc": {
+    "version": 1,
+    "files": {
+      "invoice.rb": {
+        "sha": "304c3353b80e20f65751ce858e8be39c7b6b83d42cb656076ce1503c1103235b",
+        "bytes": 323
+      },
+      "mailer.rb": {
+        "sha": "926883369c7bf3aa2926dd066959cfd516c6aa7e27b166323a46fe2d05208ffc",
+        "bytes": 159
+      },
+      "main.rb": {
+        "sha": "4a494e27a6a3edd452aef7ad7f78d0233f8ea5226527ea210d1b946717bd4096",
+        "bytes": 113
+      }
+    },
+    "layers": [
+      {
+        "id": "defs.attributes",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 83,
+            "end": 89,
+            "symbol": "Invoice#items",
+            "role": "definition",
+            "data": {
+              "scope": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "defs.classes",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 61,
+            "end": 68,
+            "symbol": "Invoice",
+            "role": "definition",
+            "data": {
+              "scope": null
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 34,
+            "end": 40,
+            "symbol": "Mailer",
+            "role": "definition",
+            "data": {
+              "scope": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "defs.methods",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 97,
+            "end": 107,
+            "symbol": "Invoice#initialize",
+            "role": "definition",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 147,
+            "end": 154,
+            "symbol": "Invoice#summary",
+            "role": "definition",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 280,
+            "end": 288,
+            "symbol": "Invoice#overdue?",
+            "role": "definition",
+            "data": {
+              "scope": "Invoice#overdue?"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 47,
+            "end": 53,
+            "symbol": "Mailer#notify",
+            "role": "definition",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 121,
+            "end": 128,
+            "symbol": "Mailer#deliver",
+            "role": "definition",
+            "data": {
+              "scope": "Mailer#deliver"
+            }
+          }
+        ]
+      },
+      {
+        "id": "exec.path",
+        "kind": "dynamic",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 93,
+            "end": 114,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 119,
+            "end": 133,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 136,
+            "end": 139,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 143,
+            "end": 154,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 159,
+            "end": 168,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 173,
+            "end": 193,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 200,
+            "end": 213,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 218,
+            "end": 221,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 226,
+            "end": 241,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 246,
+            "end": 266,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 269,
+            "end": 272,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 43,
+            "end": 62,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 67,
+            "end": 89,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 94,
+            "end": 107,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 110,
+            "end": 113,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 117,
+            "end": 134,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#deliver"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 139,
+            "end": 148,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#deliver"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 151,
+            "end": 154,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": "Mailer#deliver"
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 54,
+            "end": 85,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": null
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 86,
+            "end": 112,
+            "symbol": null,
+            "role": "executed",
+            "data": {
+              "scope": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "refs.calls",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 173,
+            "end": 178,
+            "symbol": "Invoice#items",
+            "role": "reference",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 293,
+            "end": 300,
+            "symbol": "Invoice#summary",
+            "role": "reference",
+            "data": {
+              "scope": "Invoice#overdue?"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 82,
+            "end": 89,
+            "symbol": "Invoice#summary",
+            "role": "reference",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 94,
+            "end": 101,
+            "symbol": "Mailer#deliver",
+            "role": "reference",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 72,
+            "end": 75,
+            "symbol": "Invoice#initialize",
+            "role": "reference",
+            "data": {
+              "scope": null
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 97,
+            "end": 103,
+            "symbol": "Mailer#notify",
+            "role": "reference",
+            "data": {
+              "scope": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "refs.constants",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "main.rb",
+            "start": 64,
+            "end": 71,
+            "symbol": "Invoice",
+            "role": "reference",
+            "data": {
+              "scope": null
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 86,
+            "end": 92,
+            "symbol": "Mailer",
+            "role": "reference",
+            "data": {
+              "scope": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "vars.ivars",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 119,
+            "end": 125,
+            "symbol": "Invoice@items",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          }
+        ]
+      },
+      {
+        "id": "vars.locals",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 108,
+            "end": 113,
+            "symbol": "Invoice#initialize/items",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 128,
+            "end": 133,
+            "symbol": "Invoice#initialize/items",
+            "role": "read",
+            "data": {
+              "scope": "Invoice#initialize"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 159,
+            "end": 164,
+            "symbol": "Invoice#summary/total",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 188,
+            "end": 192,
+            "symbol": "Invoice#summary/item",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 200,
+            "end": 205,
+            "symbol": "Invoice#summary/total",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 209,
+            "end": 213,
+            "symbol": "Invoice#summary/item",
+            "role": "read",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 226,
+            "end": 231,
+            "symbol": "Invoice#summary/label",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 249,
+            "end": 254,
+            "symbol": "Invoice#summary/label",
+            "role": "read",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 259,
+            "end": 264,
+            "symbol": "Invoice#summary/total",
+            "role": "read",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 54,
+            "end": 61,
+            "symbol": "Mailer#notify/invoice",
+            "role": "write",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 67,
+            "end": 71,
+            "symbol": "Mailer#notify/body",
+            "role": "write",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 74,
+            "end": 81,
+            "symbol": "Mailer#notify/invoice",
+            "role": "read",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 102,
+            "end": 106,
+            "symbol": "Mailer#notify/body",
+            "role": "read",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 129,
+            "end": 133,
+            "symbol": "Mailer#deliver/body",
+            "role": "write",
+            "data": {
+              "scope": "Mailer#deliver"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 144,
+            "end": 148,
+            "symbol": "Mailer#deliver/body",
+            "role": "read",
+            "data": {
+              "scope": "Mailer#deliver"
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 54,
+            "end": 61,
+            "symbol": "main/invoice",
+            "role": "write",
+            "data": {
+              "scope": null
+            }
+          },
+          {
+            "file": "main.rb",
+            "start": 104,
+            "end": 111,
+            "symbol": "main/invoice",
+            "role": "read",
+            "data": {
+              "scope": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "vars.temps",
+        "kind": "static",
+        "producer": "fixture@1",
+        "marks": [
+          {
+            "file": "invoice.rb",
+            "start": 226,
+            "end": 231,
+            "symbol": "Invoice#summary/label",
+            "role": "write",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "invoice.rb",
+            "start": 249,
+            "end": 254,
+            "symbol": "Invoice#summary/label",
+            "role": "read",
+            "data": {
+              "scope": "Invoice#summary"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 67,
+            "end": 71,
+            "symbol": "Mailer#notify/body",
+            "role": "write",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          },
+          {
+            "file": "mailer.rb",
+            "start": 102,
+            "end": 106,
+            "symbol": "Mailer#notify/body",
+            "role": "read",
+            "data": {
+              "scope": "Mailer#notify"
+            }
+          }
+        ]
+      }
+    ],
+    "trace": [
+      {
+        "i": 0,
+        "event": "line",
+        "file": "main.rb",
+        "start": 54,
+        "end": 85,
+        "depth": 0,
+        "symbol": null,
+        "recv": null,
+        "locals": {},
+        "value": null
+      },
+      {
+        "i": 1,
+        "event": "call",
+        "file": "invoice.rb",
+        "start": 93,
+        "end": 114,
+        "depth": 1,
+        "symbol": "Invoice#initialize",
+        "recv": "Invoice",
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 2,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 119,
+        "end": 133,
+        "depth": 1,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "items": "[10, 32]"
+        },
+        "value": null
+      },
+      {
+        "i": 3,
+        "event": "return",
+        "file": "invoice.rb",
+        "start": 136,
+        "end": 139,
+        "depth": 1,
+        "symbol": "Invoice#initialize",
+        "recv": null,
+        "locals": null,
+        "value": "[10, 32]"
+      },
+      {
+        "i": 4,
+        "event": "line",
+        "file": "main.rb",
+        "start": 86,
+        "end": 112,
+        "depth": 0,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "invoice": "#<Invoice>"
+        },
+        "value": null
+      },
+      {
+        "i": 5,
+        "event": "call",
+        "file": "mailer.rb",
+        "start": 43,
+        "end": 62,
+        "depth": 1,
+        "symbol": "Mailer#notify",
+        "recv": "Mailer",
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 6,
+        "event": "line",
+        "file": "mailer.rb",
+        "start": 67,
+        "end": 89,
+        "depth": 1,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "invoice": "#<Invoice>"
+        },
+        "value": null
+      },
+      {
+        "i": 7,
+        "event": "call",
+        "file": "invoice.rb",
+        "start": 143,
+        "end": 154,
+        "depth": 2,
+        "symbol": "Invoice#summary",
+        "recv": "Invoice",
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 8,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 159,
+        "end": 168,
+        "depth": 2,
+        "symbol": null,
+        "recv": null,
+        "locals": {},
+        "value": null
+      },
+      {
+        "i": 9,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 173,
+        "end": 193,
+        "depth": 2,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "total": "0"
+        },
+        "value": null
+      },
+      {
+        "i": 10,
+        "event": "b_call",
+        "file": "invoice.rb",
+        "start": 173,
+        "end": 193,
+        "depth": 3,
+        "symbol": null,
+        "recv": null,
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 11,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 200,
+        "end": 213,
+        "depth": 3,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "total": "0",
+          "item": "10"
+        },
+        "value": null
+      },
+      {
+        "i": 12,
+        "event": "b_return",
+        "file": "invoice.rb",
+        "start": 218,
+        "end": 221,
+        "depth": 3,
+        "symbol": null,
+        "recv": null,
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 13,
+        "event": "b_call",
+        "file": "invoice.rb",
+        "start": 173,
+        "end": 193,
+        "depth": 3,
+        "symbol": null,
+        "recv": null,
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 14,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 200,
+        "end": 213,
+        "depth": 3,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "total": "10",
+          "item": "32"
+        },
+        "value": null
+      },
+      {
+        "i": 15,
+        "event": "b_return",
+        "file": "invoice.rb",
+        "start": 218,
+        "end": 221,
+        "depth": 3,
+        "symbol": null,
+        "recv": null,
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 16,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 226,
+        "end": 241,
+        "depth": 2,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "total": "42"
+        },
+        "value": null
+      },
+      {
+        "i": 17,
+        "event": "line",
+        "file": "invoice.rb",
+        "start": 246,
+        "end": 266,
+        "depth": 2,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "total": "42",
+          "label": "\"Total\""
+        },
+        "value": null
+      },
+      {
+        "i": 18,
+        "event": "return",
+        "file": "invoice.rb",
+        "start": 269,
+        "end": 272,
+        "depth": 2,
+        "symbol": "Invoice#summary",
+        "recv": null,
+        "locals": null,
+        "value": "\"Total: 42\""
+      },
+      {
+        "i": 19,
+        "event": "line",
+        "file": "mailer.rb",
+        "start": 94,
+        "end": 107,
+        "depth": 1,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "invoice": "#<Invoice>",
+          "body": "\"Total: 42\""
+        },
+        "value": null
+      },
+      {
+        "i": 20,
+        "event": "call",
+        "file": "mailer.rb",
+        "start": 117,
+        "end": 134,
+        "depth": 2,
+        "symbol": "Mailer#deliver",
+        "recv": "Mailer",
+        "locals": null,
+        "value": null
+      },
+      {
+        "i": 21,
+        "event": "line",
+        "file": "mailer.rb",
+        "start": 139,
+        "end": 148,
+        "depth": 2,
+        "symbol": null,
+        "recv": null,
+        "locals": {
+          "body": "\"Total: 42\""
+        },
+        "value": null
+      },
+      {
+        "i": 22,
+        "event": "return",
+        "file": "mailer.rb",
+        "start": 151,
+        "end": 154,
+        "depth": 2,
+        "symbol": "Mailer#deliver",
+        "recv": null,
+        "locals": null,
+        "value": "nil"
+      },
+      {
+        "i": 23,
+        "event": "return",
+        "file": "mailer.rb",
+        "start": 110,
+        "end": 113,
+        "depth": 1,
+        "symbol": "Mailer#notify",
+        "recv": null,
+        "locals": null,
+        "value": "nil"
+      }
+    ]
+  },
+  "presentation": {
+    "version": 1,
+    "scenes": [
+      {
+        "id": "s1",
+        "name": "The two classes",
+        "file": "invoice.rb",
+        "marks": [
+          "defs.classes|invoice.rb|61|68",
+          "defs.classes|mailer.rb|34|40"
+        ],
+        "step": null
+      },
+      {
+        "id": "s2",
+        "name": "Every method definition",
+        "file": "invoice.rb",
+        "marks": [
+          "defs.methods|invoice.rb|97|107",
+          "defs.methods|invoice.rb|147|154",
+          "defs.methods|invoice.rb|280|288",
+          "defs.methods|mailer.rb|47|53",
+          "defs.methods|mailer.rb|121|128"
+        ],
+        "step": null
+      },
+      {
+        "id": "s3",
+        "name": "summary's locals",
+        "file": "invoice.rb",
+        "marks": [
+          "vars.locals|invoice.rb|159|164",
+          "vars.locals|invoice.rb|188|192",
+          "vars.locals|invoice.rb|200|205",
+          "vars.locals|invoice.rb|209|213",
+          "vars.locals|invoice.rb|226|231",
+          "vars.locals|invoice.rb|249|254",
+          "vars.locals|invoice.rb|259|264"
+        ],
+        "step": null
+      },
+      {
+        "id": "s4",
+        "name": "Inside the loop (step 14)",
+        "file": "invoice.rb",
+        "marks": [
+          "defs.methods|invoice.rb|147|154",
+          "vars.locals|invoice.rb|159|164",
+          "vars.locals|invoice.rb|188|192",
+          "vars.locals|invoice.rb|200|205",
+          "vars.locals|invoice.rb|209|213",
+          "vars.locals|invoice.rb|259|264"
+        ],
+        "step": 14
+      }
+    ]
+  },
+  "selection": null,
+  "ui": {
+    "file": "invoice.rb",
+    "solo": null,
+    "focus": false,
+    "scene": null,
+    "i": null,
+    "railWidth": 260
+  }
+}

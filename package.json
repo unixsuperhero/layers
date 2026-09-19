@@ -9,6 +9,7 @@
   },
   "scripts": {
     "fixture": "node scripts/build-fixture.mjs fixtures/example-ruby",
+    "example-bundle": "node scripts/make-example-bundle.mjs",
     "validate": "node bin/layers-validate.mjs",
     "analyze": "bin/layers-analyze",
     "test": "node --test test/*.test.js",
