@@ -76,6 +76,38 @@ try {
   });
   check('"summary" on line 9 has class lyr-defs-methods', summaryHasClass);
 
+  // default paint: with static layers merely enabled (no click), the def token has a
+  // clearly visible, non-transparent background
+  const summaryBg = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll(".lyr-defs-methods")];
+    const el = spans.find((s) => s.textContent === "summary");
+    return el ? getComputedStyle(el).backgroundColor : null;
+  });
+  check(
+    "summary def token has a non-transparent background with layers merely enabled",
+    summaryBg && summaryBg !== "rgba(0, 0, 0, 0)" && summaryBg !== "transparent",
+  );
+
+  // multi-layer segment: "label" is in vars.locals AND vars.temps — both colours show
+  // (background from the first layer, outline from the second), neither transparent
+  const labelColours = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll(".lyr-vars-locals.lyr-vars-temps")];
+    const el = spans.find((s) => s.textContent === "label");
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return { background: cs.backgroundColor, outline: cs.outlineColor };
+  });
+  check("label segment carries both vars.locals and vars.temps classes", !!labelColours);
+  check(
+    "label segment's background and outline colours are both non-transparent and differ",
+    labelColours &&
+      labelColours.background !== "rgba(0, 0, 0, 0)" &&
+      labelColours.outline !== "rgba(0, 0, 0, 0)" &&
+      labelColours.background !== labelColours.outline,
+  );
+
+  await page.screenshot({ path: join(OUT_DIR, "layers-default.png") });
+
   // toggling defs.methods off removes that class
   await page.evaluate(() => window.__layers.toggleLayer("defs.methods", false));
   const summaryGone = await page.evaluate(() => {
@@ -217,6 +249,72 @@ try {
   const reload14 = await page.evaluate(() => ({ cursor: window.__layers.stepper.cursor, file: window.__layers.state.activeFile }));
   check("reload with i=14 restores cursor 14", reload14.cursor === 14);
   check("reload with i=14 opens invoice.rb", reload14.file === "invoice.rb");
+
+  // --- Solo (focus) mode ---
+
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
+  // clicking a layer NAME in the panel solos it (real mouse click); clicking its checkbox does not
+  await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-id').click();
+  const soloAfterNameClick = await page.evaluate(() => window.__layers.state.solo);
+  check('clicking the "defs.methods" name in the panel solos it', soloAfterNameClick === "defs.methods");
+
+  await page.locator('.layer-row[data-layer-id="vars.locals"] input[type=checkbox]').click();
+  const soloAfterCheckboxClick = await page.evaluate(() => window.__layers.state.solo);
+  check("clicking a layer checkbox does not change solo", soloAfterCheckboxClick === "defs.methods");
+
+  await page.screenshot({ path: join(OUT_DIR, "solo-defs-methods.png") });
+
+  // clicking the soloed layer's name again un-solos it
+  await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-id').click();
+  const soloAfterUnsoloClick = await page.evaluate(() => window.__layers.state.solo);
+  check("clicking the soloed layer name again un-solos it", soloAfterUnsoloClick === null);
+
+  // solo("vars.locals"): a "total" token is strong-styled, the "summary" def token is unpainted
+  await page.evaluate(() => window.__layers.solo("vars.locals"));
+  const totalStrong = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll(".lyr-solo")];
+    return spans.some((el) => el.textContent === "total");
+  });
+  check('solo("vars.locals"): a "total" token has the strong-solo class', totalStrong);
+
+  const summaryUnpainted = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll('[class*="lyr-defs"]')];
+    return !spans.some((el) => el.textContent === "summary");
+  });
+  check('solo("vars.locals"): the "summary" def token has no layer class painted', summaryUnpainted);
+
+  const urlSoloVarsLocals = await page.evaluate(() => location.search);
+  check("URL contains solo=vars.locals", new URLSearchParams(urlSoloVarsLocals).get("solo") === "vars.locals");
+
+  await page.screenshot({ path: join(OUT_DIR, "solo-vars-locals.png") });
+
+  // real "]" moves solo to the next sorted layer id; real "Escape" clears it
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press("]");
+  const soloAfterBracket = await page.evaluate(() => window.__layers.state.solo);
+  check('real "]" key moves solo to the next layer id', soloAfterBracket === "vars.temps");
+
+  await page.keyboard.press("Escape");
+  const soloAfterEscape = await page.evaluate(() => window.__layers.state.solo);
+  check('real "Escape" key clears solo', soloAfterEscape === null);
+
+  // reload with &solo=vars.* restores a group solo: both "total" and "@items" strong-styled
+  await page.goto(`${base}/?project=fixtures/example-ruby&solo=vars.*`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const groupSoloState = await page.evaluate(() => window.__layers.state.solo);
+  check("reload with solo=vars.* restores group solo", groupSoloState === "vars.*");
+
+  const groupSoloStrong = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll(".lyr-solo")];
+    return {
+      total: spans.some((el) => el.textContent === "total"),
+      items: spans.some((el) => el.textContent === "@items"),
+    };
+  });
+  check('solo=vars.* : "total" token is strong-styled', groupSoloStrong.total);
+  check('solo=vars.* : "@items" token is strong-styled', groupSoloStrong.items);
 
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);

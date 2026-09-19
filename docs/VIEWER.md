@@ -46,15 +46,29 @@ offsets → `flatten()` → one `Decoration.mark` per segment with
 `class = "lyr " + layers.map(id => "lyr-" + id.replaceAll(".", "-")).join(" ")` and a
 `data-marks` attribute (segment's mark indices) so clicks can resolve back to marks.
 
-Styling per namespace so overlaps stay legible (different CSS properties don't fight):
+Every enabled inline layer gets a clearly-visible tinted background (~34% alpha) plus a
+solid outline, both in the layer's palette colour, so a layer is identifiable at a glance
+by matching its colour to the swatch in the layer panel — no click required. A small
+per-namespace cue layers on top so overlaps stay legible (different CSS properties don't
+fight):
 
 | Namespace | Visual |
 |-----------|--------|
-| `defs.*`  | bold + coloured text |
-| `refs.*`  | coloured underline |
-| `vars.*`  | translucent background |
-| `vars.temps` | dashed outline/border-bottom in addition |
+| `defs.*`  | + bold text |
+| `refs.*`  | + underline (coloured via `--lyr`) |
+| `vars.*`  | background + outline only (no extra cue) |
+| `vars.temps` | + dashed outline |
 | `exec.*`  | line-level: faint green line background + gutter dot (use `Decoration.line`), not inline marks |
+
+The colour itself is never hardcoded in `style.css`: `layerStylesheet` (panels.js) injects
+one rule per layer, `.lyr-<id> { --lyr: #… }`, sorted by id so the cascade consistently
+picks the alphabetically-last layer's colour when several layers cover a segment. Each
+mark also gets an inline `--lyr-bg` (editor.js `markDecorations`) set to the
+alphabetically-first layer's colour. `style.css` reads only these two custom properties —
+background from `--lyr-bg`, outline from `--lyr` — so a segment covering a single layer
+shows one colour twice, and a segment covering several (e.g. `label` is in `vars.locals`
+*and* `vars.temps`) shows its background in the first layer's colour and its outline in
+the second's, both visible at once.
 
 When `exec.path` is enabled, lines in the file with **no** executed mark are dimmed
 (opacity) — "not executed" must be visible, not just absent.
@@ -62,6 +76,38 @@ When `exec.path` is enabled, lines in the file with **no** executed mark are dim
 Layer panel: checkbox per layer, grouped by namespace with a group toggle, mark count
 beside each. Toggling re-computes decorations for that editor only (a CodeMirror
 `Compartment` or a `StateEffect` → `StateField`; don't rebuild the editor).
+
+## Solo mode
+
+Clicking a layer's **name** (or its colour swatch) in the panel solos it — the checkbox
+still only toggles it on/off. Clicking a namespace group's name (`vars.*`) solos the
+whole group. Clicking the soloed layer's name again clears the solo. A solo value is
+either a plain layer id (`"vars.locals"`) or a namespace group (`"vars.*"`); the pure
+logic for resolving it — which layer ids it picks out, and cycling forward/back through
+the sorted ids — lives in `src/viewer/solo.js` (DOM-free, tested in
+`test/viewer-solo.test.js`).
+
+While a solo is active it completely overrides the checkboxes: only the soloed layer(s)
+are painted, even if their checkbox is off, and every other layer is hidden even if its
+checkbox is on. Soloed marks get the strong `lyr-solo` style — a near-opaque background
+in the layer's colour, a 1px outline, bold, and dark (`#10131a`, forced with `!important`
+onto the mark and its children — CodeMirror nests a syntax-highlighting span with its own
+colour inside every mark, which would otherwise win). Everything else in the file gets
+the `code-dim` class (opacity ~0.45), computed in `editor.js` as the complement of the
+soloed marks' ranges over the whole document. Soloing `exec.path` is the exception: it
+has no inline marks, so it just shows the normal line highlight + non-executed dimming,
+with nothing else dimmed.
+
+The soloed row in the layer panel gets a `solo` class (left accent bar) and a `SOLO`
+badge; a group solo marks the group header the same way. A `solo: <id> ✕` chip appears
+above the editor; its `✕` clears the solo. Keys (same focus guard as the stepper keys):
+`]` solos the next layer id, `[` the previous, cycling through the sorted layer ids and
+starting from the first when nothing is soloed; `Esc` clears the solo (in addition to its
+existing job of clearing the selected symbol). Symbol click/jump and the stepper's
+current-statement decoration work unchanged in solo mode.
+
+Debug handle: `window.__layers.solo(idOrNamespaceOrNull)`; `window.__layers.state.solo`
+reads the current value.
 
 ## Symbols & jumping
 
@@ -92,8 +138,8 @@ Only shown when `doc.trace` is non-empty. Drives `createStepper(doc.trace)`.
 
 ## URL state
 
-`?project=…&file=…&i=…` kept in sync with `history.replaceState` so a reload restores
-the open file and stepper cursor.
+`?project=…&file=…&i=…&solo=…` kept in sync with `history.replaceState` so a reload
+restores the open file, stepper cursor, and solo (a layer id or `ns.*` group).
 
 ## File structure
 
@@ -105,6 +151,7 @@ src/viewer/load.js        fetching + offset maps
 src/viewer/editor.js      CodeMirror setup, decorations StateField, click → marks
 src/viewer/panels.js      files, layers, symbol, stepper DOM
 src/viewer/nav.js         jump + history stack (pure where possible)
+src/viewer/solo.js        solo/focus-mode logic (pure)
 src/viewer/style.css
 ```
 
