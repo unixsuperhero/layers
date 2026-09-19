@@ -23,18 +23,26 @@ If `?project=` is missing, default to `fixtures/example-ruby`.
 
 ```
 ┌───────────┬──────────────────────────────────────┬──────────────┐
-│ Files     │ [invoice.rb] [mailer.rb] [main.rb]   │ Symbol       │
-│  invoice  │                                      │  (selected   │
-│  mailer   │   CodeMirror (read-only)             │   symbol's   │
-│  main     │                                      │   defs/refs) │
-│───────────│                                      │──────────────│
-│ Layers    │                                      │ Stepper      │
-│ ☑ defs.*  │                                      │  ◀◀ ◀ ▶ ▶▶ ⤴ │
-│ ☑ vars.*  │                                      │  event 7/24  │
-│ ☐ exec.*  │                                      │  stack       │
+│ Files     │ [invoice.rb] [mailer.rb] [main.rb]   │ SCENES       │
+│  invoice  │                                      │  + from view │
+│  mailer   │   CodeMirror (read-only)             │  1 …  2 …    │
+│  main     │                                      │──────────────│
+│───────────│                                      │ SYMBOL       │
+│ Layers    │                                      │  (selected   │
+│ ☑ defs.*  │                                      │   symbol's   │
+│ ☑ vars.*  │                                      │   defs/refs) │
+│ ☐ exec.*  │                                      │──────────────│
+│           │                                      │ STEPPER      │
+│           │                                      │  ◀◀ ◀ ▶ ▶▶ ⤴ │
+│           │                                      │  event 7/24  │
+│           │                                      │  stack       │
 │           │                                      │  locals      │
 └───────────┴──────────────────────────────────────┴──────────────┘
 ```
+
+The right column is three sections — Scenes, Symbol, Stepper — each scrolling independently
+and collapsing when its heading is clicked (state remembered in localStorage). See "Scenes"
+below.
 
 Dark theme, monospace, compact. Each layer id gets a stable colour (assign from a fixed
 palette by sorted layer id index — deterministic, not random).
@@ -143,10 +151,29 @@ Only shown when `doc.trace` is non-empty. Drives `createStepper(doc.trace)`.
   previous displayed event are highlighted.
 - The stepper works regardless of which layers are toggled on.
 
+## Scenes
+
+A Photoshop-style presentation list (right column, above Symbol/Stepper) for saving,
+reordering and replaying named views. See
+[docs/SELECTION-AND-SCENES.md](SELECTION-AND-SCENES.md) Part B for the full spec — data
+shape, panel controls, activation semantics, keys and persistence. Pure logic lives in
+`src/viewer/scenes.js` (`node --test`-ed in `test/viewer-scenes.test.js`); DOM lives in
+`src/viewer/scenes-panel.js`. An example presentation for the fixture project is at
+[examples/presentation.example-ruby.json](../examples/presentation.example-ruby.json).
+
+Deviations from the spec: scene ids are assigned as the next free `s<N>` (not otherwise
+specified); the "pin step" checkbox is a single toolbar-level toggle shared by both
+`+ from view` and `⟲ update` (rather than a per-action option), so the debug handle's
+`update(id)` takes no options and always captures the toolbar's current pin-step state,
+matching what the `⟲` button does; "current view" for a solo override generalizes the
+per-file "selection ∩ soloed layer, else whole layer" fallback to the whole project (checked
+per soloed layer across all files, since a scene must capture marks project-wide).
+
 ## URL state
 
-`?project=…&file=…&i=…&solo=…` kept in sync with `history.replaceState` so a reload
-restores the open file, stepper cursor, and solo (a layer id or `ns.*` group).
+`?project=…&file=…&i=…&solo=…&scene=…` kept in sync with `history.replaceState` so a
+reload restores the open file, stepper cursor, solo (a layer id or `ns.*` group), and the
+active scene (1-based index into the scene list; takes precedence over `solo=`).
 
 ## File structure
 
@@ -156,9 +183,12 @@ vite.config.js            root = repo root so /fixtures/** is fetchable in dev
 src/viewer/main.js        boot: load → validate → wire panels
 src/viewer/load.js        fetching + offset maps
 src/viewer/editor.js      CodeMirror setup, decorations StateField, click → marks
-src/viewer/panels.js      files, layers, symbol, stepper DOM
+src/viewer/panels.js      files, layers, symbol, stepper DOM + right-column collapsing
 src/viewer/nav.js         jump + history stack (pure where possible)
 src/viewer/solo.js        solo/focus-mode logic (pure)
+src/viewer/selection.js   per-mark selection logic (pure)
+src/viewer/scenes.js      presentation (Scenes) logic (pure)
+src/viewer/scenes-panel.js  Scenes panel DOM
 src/viewer/style.css
 ```
 
