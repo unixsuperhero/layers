@@ -315,5 +315,6 @@ export function createEditor(parent, { onClick } = {}) {
     setSoloDim,
     scrollTo,
     scrollIntoView,
+    destroy: () => view.destroy(),
   };
 }

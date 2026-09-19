@@ -8,7 +8,7 @@ export function clampWidth(px, min, maxPx) {
 // left grows it (the right column's left edge). onChange(px) fires on drag + reset; the
 // caller is responsible for persisting it. `body.rail-resizing` (added while dragging)
 // disables text selection and editor pointer events, see style.css.
-export function wireResizeHandle(handle, { root, varName, getWidth, min = 180, maxVw = 0.6, sign = 1, resetWidth, onChange }) {
+export function wireResizeHandle(handle, { root, varName, getWidth, min = 180, maxVw = 0.6, sign = 1, resetWidth, onChange, signal }) {
   function apply(px) {
     const max = window.innerWidth * maxVw;
     const clamped = clampWidth(px, min, max);
@@ -32,17 +32,21 @@ export function wireResizeHandle(handle, { root, varName, getWidth, min = 180, m
     document.body.classList.remove("rail-resizing");
   }
 
-  handle.addEventListener("mousedown", (event) => {
-    dragging = true;
-    startX = event.clientX;
-    startWidth = getWidth();
-    document.body.classList.add("rail-resizing");
-    event.preventDefault();
-  });
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onUp);
+  handle.addEventListener(
+    "mousedown",
+    (event) => {
+      dragging = true;
+      startX = event.clientX;
+      startWidth = getWidth();
+      document.body.classList.add("rail-resizing");
+      event.preventDefault();
+    },
+    { signal },
+  );
+  window.addEventListener("mousemove", onMove, { signal });
+  window.addEventListener("mouseup", onUp, { signal });
 
-  handle.addEventListener("dblclick", () => apply(resetWidth));
+  handle.addEventListener("dblclick", () => apply(resetWidth), { signal });
 
   return { apply };
 }
@@ -70,7 +74,7 @@ function saveWidth(projectDir, name, px) {
 // Wires both rail resize handles (the rail's right edge, the right column's left edge),
 // restoring + persisting each width per project. root: the element carrying the CSS custom
 // properties the layout grid reads (docs/ROUND-3.md D "Resizable").
-export function wireRailResize(root, { railHandle, rightHandle }, projectDir) {
+export function wireRailResize(root, { railHandle, rightHandle }, projectDir, { signal } = {}) {
   let railWidth = loadWidth(projectDir, "railWidth", 260);
   let rightWidth = loadWidth(projectDir, "rightWidth", 300);
   root.style.setProperty("--rail-width", `${railWidth}px`);
@@ -82,6 +86,7 @@ export function wireRailResize(root, { railHandle, rightHandle }, projectDir) {
     getWidth: () => railWidth,
     sign: 1,
     resetWidth: 260,
+    signal,
     onChange: (px) => {
       railWidth = px;
       saveWidth(projectDir, "railWidth", px);
@@ -93,6 +98,7 @@ export function wireRailResize(root, { railHandle, rightHandle }, projectDir) {
     getWidth: () => rightWidth,
     sign: -1,
     resetWidth: 300,
+    signal,
     onChange: (px) => {
       rightWidth = px;
       saveWidth(projectDir, "rightWidth", px);

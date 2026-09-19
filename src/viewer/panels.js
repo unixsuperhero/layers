@@ -8,7 +8,13 @@ export function buildLayout(app) {
         <div class="nav-toolbar">
           <button id="nav-back" type="button" title="Back (Alt+Left)">&larr;</button>
           <button id="nav-forward" type="button" title="Forward (Alt+Right)">&rarr;</button>
+          <button id="toolbar-open" type="button" title="Open… (analyze files or a folder)">Open&hellip;</button>
+          <button id="toolbar-import" type="button" title="Import a .layers-bundle.json file">Import</button>
+          <input id="toolbar-import-input" type="file" accept="application/json,.json" hidden />
+          <button id="toolbar-export" type="button" title="Export the current project as a bundle">Export</button>
         </div>
+        <div class="toolbar-project-name" id="toolbar-project-name"></div>
+        <div class="app-message" id="app-message" hidden></div>
         <div class="file-list" id="file-list"></div>
         <div class="rail-header" id="rail-header">
           <h2>Layers</h2>
@@ -44,6 +50,12 @@ export function buildLayout(app) {
     </div>
   `;
   return {
+    toolbarOpenBtn: app.querySelector("#toolbar-open"),
+    toolbarImportBtn: app.querySelector("#toolbar-import"),
+    toolbarImportInput: app.querySelector("#toolbar-import-input"),
+    toolbarExportBtn: app.querySelector("#toolbar-export"),
+    toolbarProjectNameEl: app.querySelector("#toolbar-project-name"),
+    appMessageEl: app.querySelector("#app-message"),
     fileListEl: app.querySelector("#file-list"),
     railEl: app.querySelector("#rail-panel"),
     focusToggleEl: app.querySelector("#focus-toggle"),
