@@ -28,8 +28,16 @@ export function createRail(projectDir, doc, initialFile) {
   const allLayerIds = doc.layers.map((l) => l.id);
   const stored = loadStored(projectDir, doc);
 
+  // Default open state (docs/ROUND-3.md D): ALL FILES open, its namespace groups open too
+  // (today's rail always showed every layer row) — the visible file's accordion open with
+  // Whole file and its methods collapsed.
+  const defaultExpanded = (file) => {
+    const namespaces = new Set(doc.layers.map((l) => l.id.split(".")[0]));
+    return new Set(["all", ...[...namespaces].map((ns) => `all/${ns}.*`), `file/${file}`]);
+  };
+
   let selection = stored ? stored.selection : defaultSelection(doc);
-  let expanded = stored ? stored.expanded : new Set(["all", `file/${initialFile}`]);
+  let expanded = stored ? stored.expanded : defaultExpanded(initialFile);
   let focus = stored ? stored.focus : false;
   let solo = null; // never persisted (URL-only, like today)
   let visibleFiles = [initialFile];
@@ -57,7 +65,7 @@ export function createRail(projectDir, doc, initialFile) {
 
   function reset() {
     selection = defaultSelection(doc);
-    expanded = new Set(["all", `file/${visibleFiles[0]}`]);
+    expanded = defaultExpanded(visibleFiles[0]);
     try {
       localStorage.removeItem(storageKey(projectDir));
     } catch {

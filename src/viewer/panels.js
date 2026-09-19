@@ -331,7 +331,6 @@ function accordionHeader(node, level, ctx, handlers, solomable) {
 
   const header = document.createElement("div");
   header.className = `rail-accordion-header level-${level}` + (isSoloed ? " solo" : "") + (state === "some" ? " partial" : "");
-  header.dataset.nodeId = node.id;
 
   const pin = document.createElement("span");
   pin.className = "row-pin";
@@ -378,6 +377,7 @@ function renderNamespaceGroup(nsNode, ctx, handlers) {
   const { header, isOpen } = accordionHeader(nsNode, "namespace", ctx, handlers, true);
   const wrap = document.createElement("div");
   wrap.className = "rail-accordion";
+  wrap.dataset.nodeId = nsNode.id;
   wrap.appendChild(header);
   if (isOpen) {
     const body = document.createElement("div");
@@ -392,6 +392,7 @@ function renderAllFilesAccordion(allNode, ctx, handlers) {
   const { header, isOpen } = accordionHeader(allNode, "all", ctx, handlers, false);
   const wrap = document.createElement("div");
   wrap.className = "rail-accordion";
+  wrap.dataset.nodeId = allNode.id;
   wrap.appendChild(header);
   if (isOpen) {
     const body = document.createElement("div");
@@ -406,6 +407,7 @@ function renderGroupAccordion(node, level, ctx, handlers) {
   const { header, isOpen } = accordionHeader(node, level, ctx, handlers, level !== "whole-file");
   const wrap = document.createElement("div");
   wrap.className = "rail-accordion";
+  wrap.dataset.nodeId = node.id;
   wrap.appendChild(header);
   if (isOpen) {
     const body = document.createElement("div");
@@ -420,6 +422,7 @@ function renderFileAccordion(fileNode, ctx, handlers) {
   const { header, isOpen } = accordionHeader(fileNode, "file", ctx, handlers, true);
   const wrap = document.createElement("div");
   wrap.className = "rail-accordion";
+  wrap.dataset.nodeId = fileNode.id;
   wrap.appendChild(header);
   if (isOpen) {
     const body = document.createElement("div");
