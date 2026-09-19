@@ -15,24 +15,11 @@ class FixtureStaticTest < Minitest::Test
     @fixture_doc = JSON.parse(File.read(File.join(FIXTURE_DIR, "layers.json")))
     @project = JSON.parse(File.read(File.join(FIXTURE_DIR, "project.json")))
 
-    visitors = {}
-    @project["files"].each do |rel|
-      path = File.join(FIXTURE_DIR, @project["root"], rel)
-      result = Prism.parse(File.binread(path), filepath: rel)
-      raise "fixture file failed to parse: #{rel}" unless result.success?
-
-      v = StaticVisitor.new(rel)
-      v.visit(result.value)
-      visitors[rel] = v
+    # The FULL pipeline (static + effects + verdicts): the fixture carries effects.* layers too.
+    files = @project["files"].to_h do |rel|
+      [rel, File.binread(File.join(FIXTURE_DIR, @project["root"], rel)).force_encoding("UTF-8")]
     end
-
-    def_records = visitors.values.flat_map(&:def_records)
-    index = ProjectIndex.new(def_records)
-    raw_constants = visitors.values.flat_map(&:raw_constants)
-    raw_calls = visitors.values.flat_map(&:raw_calls)
-
-    @marks = visitors.values.flat_map(&:def_marks) + visitors.values.flat_map(&:var_marks) +
-             ConstantResolver.resolve(raw_constants, index) + CallResolver.resolve(raw_calls, index)
+    @marks = AnalyzePipeline.run(files).marks
   end
 
   def mine_by_layer(layer_id)

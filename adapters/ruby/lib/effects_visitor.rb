@@ -228,7 +228,7 @@ class EffectsVisitor < Prism::Visitor
            kind_data: { "kind" => "io", "what" => what })
     elsif EffectCatalog::CONTROL_NAMES.include?(name)
       emit("effects.control", start_offset, finish_offset, symbol: nil, role: "reference",
-           kind_data: { "kind" => "control" })
+           kind_data: { "kind" => "control", "name" => name })
     elsif EffectCatalog::CLASS_SHAPE_NAMES.include?(name)
       # Only an effect INSIDE a method (docs/ROUND-4.md); at class-body level this is
       # ordinary class definition (e.g. `attr_reader :x`, `include Comparable`) -- never a
@@ -238,8 +238,9 @@ class EffectsVisitor < Prism::Visitor
     elsif EffectCatalog::DYNAMIC_DISPATCH_NAMES.include?(name)
       emit("effects.unknown", start_offset, finish_offset, symbol: nil, role: "reference",
            kind_data: { "kind" => "unknown", "name" => name })
-    elsif EffectCatalog::KNOWN_PURE_NAMES.include?(name) || EffectCatalog::OPERATOR_NAMES.include?(name)
-      # pure / operator -- no mark, and not a call edge either
+    elsif EffectCatalog::KNOWN_PURE_NAMES.include?(name) || EffectCatalog::OPERATOR_NAMES.include?(name) ||
+          EffectCatalog.pure_receiver_call?(node.receiver, name)
+      # pure / operator / pure stdlib module -- no mark, and not a call edge either
     else
       record_pending_call(node, name, start_offset, finish_offset)
     end

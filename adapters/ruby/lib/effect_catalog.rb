@@ -96,7 +96,27 @@ module EffectCatalog
     private public protected module_function private_class_method public_class_method
   ].freeze
 
+  # Stdlib modules whose module-level methods are all pure transforms (no IO, no global state):
+  # `JSON.generate(x)`, `Math.sqrt(x)`, `Base64.encode64(x)`. IO_* catalogs are consulted first,
+  # so `URI.open` stays network IO. YAML/CSV/Marshal are deliberately absent (load_file/read/open).
+  PURE_RECEIVERS = %w[JSON Math Base64 Digest CGI URI Shellwords Comparable Kernel Rational Complex BigDecimal].freeze
+
+  # Pure conversions/constructors on otherwise effectful receivers.
+  PURE_RECEIVER_MESSAGE = [
+    %w[Time at], %w[Time parse], %w[Time iso8601], %w[Time utc], %w[Time gm], %w[Time mktime],
+    %w[Date parse], %w[Date iso8601], %w[Date strptime], %w[DateTime parse], %w[DateTime iso8601],
+  ].freeze
+
   module_function
+
+  def pure_receiver_call?(receiver, message)
+    rtext = receiver_text(receiver)
+    return false unless rtext
+
+    PURE_RECEIVER_MESSAGE.include?([rtext, message]) ||
+      PURE_RECEIVERS.include?(rtext) || PURE_RECEIVERS.include?(rtext.split("::").first)
+  end
+
 
   # Classifies an IO call by its (receiver node, bare message name); returns a "what" string
   # (docs/ROUND-4.md's `data.what`) or nil if this isn't a catalogued IO call. Checked in this
