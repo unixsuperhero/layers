@@ -593,10 +593,12 @@ try {
   check("Escape deactivates the active scene", (await page.evaluate(() => window.__layers.scenes.activeId)) === null);
 
   // duplicate -> list length 4, copy sits right after the original with " copy"
-  await page
-    .locator(".scene-row", { has: page.locator(".scene-name", { hasText: "The two classes" }) })
-    .locator(".scene-dup")
-    .click();
+  // action buttons only appear on hover, so hover the row first like a real user
+  const twoClassesRow = page.locator(".scene-row", { has: page.locator(".scene-name", { hasText: "The two classes" }) }).first();
+  await page.mouse.move(640, 400); // park the pointer over the editor, away from the scene rows
+  check("scene action buttons are hidden until the row is hovered", !(await twoClassesRow.locator(".scene-dup").isVisible()));
+  await twoClassesRow.hover();
+  await twoClassesRow.locator(".scene-dup").click();
   const afterDup = await page.evaluate(() => window.__layers.scenes.list());
   check("duplicate makes the list length 4", afterDup.length === 4);
   check('the copy sits right after the original with " copy" appended', afterDup[1].name === "The two classes copy");
@@ -625,6 +627,7 @@ try {
 
   // ⇤ load sets selection to the scene's marks
   const loadTarget = (await page.evaluate(() => window.__layers.scenes.list()))[0];
+  await page.locator(".scene-row").first().hover();
   await page.locator(".scene-row").first().locator(".scene-load").click();
   const selectionAfterLoad = await page.evaluate(() => [...window.__layers.state.selection].sort());
   check("⇤ load sets selection to the scene's marks", JSON.stringify(selectionAfterLoad) === JSON.stringify([...loadTarget.marks].sort()));
@@ -637,6 +640,7 @@ try {
     return layer.marks.map((m) => `vars.ivars|${m.file}|${m.start}|${m.end}`).sort();
   });
   const updateTargetId = (await page.evaluate(() => window.__layers.scenes.list()))[0].id;
+  await page.locator(".scene-row").first().hover();
   await page.locator(".scene-row").first().locator(".scene-update").click();
   await page.evaluate(() => window.__layers.solo(null));
   const afterUpdate = (await page.evaluate(() => window.__layers.scenes.list())).find((s) => s.id === updateTargetId);
@@ -644,6 +648,7 @@ try {
 
   // ✕ delete removes the scene
   const idsBeforeDelete = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  await page.locator(".scene-row").first().hover();
   await page.locator(".scene-row").first().locator(".scene-remove").click();
   const idsAfterDelete = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
   check(

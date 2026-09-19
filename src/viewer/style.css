@@ -796,3 +796,12 @@ h3 {
   background-color: rgba(255, 191, 61, 0.2);
   color: #ffbf3d;
 }
+
+/* Scene rows: give the name the full width; actions appear on hover/focus only. */
+.scene-active-badge {
+  display: none;
+}
+
+.scene-row:not(:hover):not(:focus-within) .scene-action {
+  display: none;
+}
