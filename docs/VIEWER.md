@@ -196,26 +196,82 @@ per soloed layer across all files, since a scene must capture marks project-wide
 reload restores the open file, stepper cursor, solo (a layer id or `ns.*` group), and the
 active scene (1-based index into the scene list; takes precedence over `solo=`).
 
+## Bundles & Open…
+
+Full spec: [docs/ROUND-3.md](ROUND-3.md) section "C. Bundle, import/export, Open…"; the
+bundle format itself is in [docs/CONTRACT.md](CONTRACT.md) "Round 3 additions". Summary:
+
+- The app always boots from a **bundle** object (`src/core/bundle.js`: `assembleBundle`,
+  `parseBundle`, `bundleKey`, `verifySources`), not directly from a project dir. `?project=dir`
+  is just one way to produce one: `load.js` fetches `project.json` + `layers.json` + the
+  source files, `main.js` resolves the initial `presentation` (localStorage, else
+  `presentation.json`, else empty) and assembles a bundle from all of it.
+- `src/viewer/main.js` exports `mountApp(app, bundle, opts)`, which renders the whole app into
+  `app` and returns `{ unmount() }`. Calling it again with a different bundle — from Import or
+  a successful Open… analyze — remounts without a page reload: every window-level listener
+  (keydown, resize drag, drop-to-import) is registered through one `AbortController` per mount
+  so the old ones are cleanly dropped, and `editor.destroy()` releases the old CodeMirror view.
+  A module-level `remount(bundle, opts)` in `main.js` owns the current app instance.
+- **localStorage namespacing**: selection/expanded-accordions/focus (`rail.js`) and
+  `presentation` (`app-scenes.js`) are keyed by `bundleKey(bundle)` (project name + a hash of
+  the doc's file shas), not the project directory string — two bundles with the same project
+  name never clobber each other, and a freshly-imported bundle gets its own key. Rail/right
+  column widths (`resize.js`) are a single **global** localStorage key instead, since they're
+  a personal UI preference rather than project data.
+- **Toolbar** (`toolbar.js`, DOM in `panels.js`'s `buildLayout`, top-left next to Back/Forward):
+  `#toolbar-open`, `#toolbar-import` (+ hidden `#toolbar-import-input`), `#toolbar-export`, and
+  `#toolbar-project-name`. Export downloads `<name>.layers-bundle.json` (current sources, doc,
+  presentation, selection and UI state via `assembleBundle`). Import validates the file
+  (`parseBundle` → `createValidator` on `doc` → `verifySources`) and remounts on success;
+  dropping a bundle file anywhere on the window does the same. Every error — bad shape, failed
+  schema validation, a sha256 mismatch naming the file — shows in the dismissible `#app-message`
+  area, never `alert()`; a mismatch leaves the current project mounted.
+- **Open… dialog** (`open-dialog.js`, a singleton `<dialog id="open-dialog">` appended to
+  `<body>` once, so it survives remounts): "Add files" / "Add folder" accumulate `.rb` files
+  into a de-duped, removable list (non-`.rb` files are ignored with a count); an entry-point
+  `<select>` preselects `main.rb` or the sole file; **Analyze** POSTs
+  `{ name, files: [{path, text}], entry }` to `/api/analyze` and mounts the returned bundle on
+  success. A non-JSON response (dev server not running) shows "Analyzing needs the dev server
+  (npm run dev). Import still works."; per-file syntax-error warnings from the analyzer are
+  shown but the bundle still loads.
+- **`server/analyze-plugin.js`**: a Vite `configureServer` plugin adding `POST /api/analyze`
+  (wired in `vite.config.js`). Validates the upload (relative paths only, no `..`, no
+  backslashes, no duplicates, entry must be one of the files, 5 MB total cap → 413), writes to
+  `.layers-work/<random>/src/` (gitignored), runs `bin/layers-analyze` via `execFile` with an
+  argument array (never a shell string) under a 30s timeout, returns the bundle JSON plus
+  `warnings` (the analyzer's stderr lines), and always deletes the work dir. The request
+  handler (`createAnalyzeHandler`) is exported separately from the plugin wrapper so it can be
+  unit-tested with fake req/res (`test/analyze-plugin.test.js`).
+
 ## File structure
 
 ```
 index.html
-vite.config.js            root = repo root so /fixtures/** is fetchable in dev
-src/viewer/main.js        boot: load → validate → wire panels
-src/viewer/load.js        fetching + offset maps
-src/viewer/editor.js      CodeMirror setup, decorations StateField, click → marks
-src/viewer/panels.js      files, rail, symbol, stepper DOM + right-column collapsing
-src/viewer/rail-tree.js   Layers rail v2 tree + solo-id resolution (pure)
-src/viewer/rail.js        Layers rail v2 state: selection/expanded/solo/focus + persistence
-src/viewer/resize.js      rail / right-column drag-to-resize (pure clamp + DOM wiring)
-src/viewer/nav.js         jump + history stack (pure where possible)
-src/viewer/solo.js        legacy layer/namespace solo-id logic (pure)
-src/viewer/selection.js   per-mark selection logic (pure)
-src/viewer/scenes.js      presentation (Scenes) logic (pure)
-src/viewer/scenes-panel.js  Scenes panel DOM
+vite.config.js            root = repo root so /fixtures/** is fetchable in dev; wires analyzePlugin
+server/analyze-plugin.js  POST /api/analyze (Vite dev plugin) — spawns bin/layers-analyze
+src/core/bundle.js         assemble/parse/key/verify a project bundle (pure)
+src/viewer/main.js         mountApp(bundle): boot + composition; remount(bundle) on Import/Open…
+src/viewer/load.js         fetching + offset maps (?project= path)
+src/viewer/app-url.js      URL param parse/build (pure) + syncURL
+src/viewer/app-stepper.js  stepper wiring: stepping, painting, panel render, keys' actions
+src/viewer/app-scenes.js   scenes wiring: presentation state, CRUD, activation, persistence
+src/viewer/app-keys.js     global keydown handling
+src/viewer/toolbar.js      Open…/Import/Export + inline message area, drop-to-import
+src/viewer/open-dialog.js  the Open… dialog: file/folder pick, entry select, POST /api/analyze
+src/viewer/bundle-io.js    download-a-bundle / read-a-File-as-JSON (DOM-facing helpers)
+src/viewer/editor.js       CodeMirror setup, decorations StateField, click → marks
+src/viewer/panels.js       files, rail, symbol, stepper, toolbar DOM + right-column collapsing
+src/viewer/rail-tree.js    Layers rail v2 tree + solo-id resolution (pure)
+src/viewer/rail.js         Layers rail v2 state: selection/expanded/solo/focus + persistence
+src/viewer/resize.js       rail / right-column drag-to-resize (pure clamp + DOM wiring)
+src/viewer/nav.js          jump + history stack (pure where possible)
+src/viewer/solo.js         legacy layer/namespace solo-id logic (pure)
+src/viewer/selection.js    per-mark selection logic (pure)
+src/viewer/scenes.js       presentation (Scenes) pure list logic (add/move/rename/parse/…)
+src/viewer/scenes-panel.js Scenes panel DOM
 src/viewer/style.css
 ```
 
-Pure helpers in the viewer (e.g. history stack, "marks at position", palette assignment)
-get `node --test` tests under `test/viewer-*.test.js`; they must not import CodeMirror
-or touch the DOM.
+Pure helpers in the viewer (e.g. history stack, "marks at position", palette assignment, URL
+param parse/build) get `node --test` tests under `test/viewer-*.test.js`; they must not import
+CodeMirror or touch the DOM.

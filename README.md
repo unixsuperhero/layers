@@ -26,10 +26,29 @@ npm run dev          # open http://localhost:5173/?project=fixtures/example-ruby
 npm run smoke        # headless-browser assertions + screenshots in scripts/smoke-out/
 ```
 
+## Real Ruby projects, bundles, and Open…
+
+`bin/layers-analyze` (see [adapters/ruby/README.md](adapters/ruby/README.md)) turns real `.rb`
+files into a `layers.json` — a static-only pass, or with `--entry FILE` a full execution trace
+too:
+
+```sh
+cd adapters/ruby && bundle install                      # once
+bin/layers-analyze path/to/project --entry main.rb --bundle out.layers-bundle.json
+```
+
+The viewer boots from and can export a single **bundle** file (sources + `layers.json` +
+presentation + selection + UI state, see [docs/CONTRACT.md](docs/CONTRACT.md) "Bundle"). In
+`npm run dev`, the toolbar (top-left) has:
+
+- **Open…** — pick `.rb` files or a folder, choose an entry point, and analyze them in the
+  browser (POSTs to `/api/analyze`, a dev-only endpoint — `npm run dev`, not a static build).
+- **Import** / drag-and-drop anywhere — load a `.layers-bundle.json` file, like
+  `examples/example-ruby.layers-bundle.json` (`npm run example-bundle` regenerates it).
+- **Export** — download the current project + view as a `.layers-bundle.json`.
+
 ## Later phases
 
-2. Ruby adapter (Prism) → static layers
-3. Ruby Coverage → `exec.branches`
-4. Ruby TracePoint → `trace[]`
-5. JS/TS adapter (TypeScript compiler API)
-6. tree-sitter fallback adapter
+2. Ruby Coverage → `exec.branches`
+3. JS/TS adapter (TypeScript compiler API)
+4. tree-sitter fallback adapter
