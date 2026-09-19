@@ -4,3 +4,4 @@ dist/
 scripts/smoke-out/
 scripts/guide-out/
 .layers-work/
+fixtures/*
