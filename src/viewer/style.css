@@ -268,3 +268,126 @@ h3 {
   border-radius: 50%;
   background: #50c878;
 }
+
+/* --- stepper --- */
+
+.col-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.symbol-panel {
+  flex: none;
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+.stepper-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.step-current {
+  background-color: rgba(255, 191, 61, 0.35);
+  outline: 2px solid #ffbf3d;
+  outline-offset: -1px;
+  border-radius: 2px;
+}
+
+.cm-step-gutter {
+  width: 14px;
+}
+
+.step-gutter-arrow {
+  display: block;
+  color: #ffbf3d;
+  font-size: 9px;
+  text-align: center;
+}
+
+.stepper-controls {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.stepper-controls button {
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 6px;
+  font: inherit;
+}
+
+.stepper-controls button:hover {
+  background: var(--border);
+}
+
+.step-slider {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.step-status {
+  color: var(--fg-dim);
+  margin-bottom: 4px;
+}
+
+.step-symbol {
+  color: var(--accent);
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.step-value {
+  color: #98c379;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.step-frame {
+  padding: 2px 0 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-frame:hover {
+  color: var(--accent);
+}
+
+.step-frame.current {
+  color: #ffbf3d;
+  font-weight: 700;
+}
+
+.step-locals {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.step-locals td {
+  padding: 1px 6px 1px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.step-locals td:first-child {
+  color: var(--fg-dim);
+}
+
+.step-locals tr.changed td {
+  background-color: rgba(255, 191, 61, 0.2);
+  color: #ffbf3d;
+}

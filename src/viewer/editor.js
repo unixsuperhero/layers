@@ -44,7 +44,9 @@ const layerMarks = decorationField();
 const execLines = decorationField();
 const selectionMarks = decorationField();
 const flashMarks = decorationField();
+const stepperMarks = decorationField();
 const execGutter = gutterMarkerField();
+const stepperGutter = gutterMarkerField();
 
 class ExecDot extends GutterMarker {
   toDOM() {
@@ -54,6 +56,16 @@ class ExecDot extends GutterMarker {
   }
 }
 const execDot = new ExecDot();
+
+class StepArrow extends GutterMarker {
+  toDOM() {
+    const arrow = document.createElement("span");
+    arrow.className = "step-gutter-arrow";
+    arrow.textContent = "▶";
+    return arrow;
+  }
+}
+const stepArrow = new StepArrow();
 
 const langCompartment = new Compartment();
 
@@ -141,9 +153,12 @@ function baseExtensions(onClick) {
     execLines.field,
     selectionMarks.field,
     flashMarks.field,
+    stepperMarks.field,
     execGutter.field,
+    stepperGutter.field,
     lineNumbers(),
     gutter({ class: "cm-exec-gutter", markers: (view) => view.state.field(execGutter.field) }),
+    gutter({ class: "cm-step-gutter", markers: (view) => view.state.field(stepperGutter.field) }),
     EditorView.lineWrapping,
     EditorView.theme(
       {
@@ -195,7 +210,9 @@ export function createEditor(parent, { onClick } = {}) {
         execLines.effect.of(Decoration.none),
         selectionMarks.effect.of(Decoration.none),
         flashMarks.effect.of(Decoration.none),
+        stepperMarks.effect.of(Decoration.none),
         execGutter.effect.of(RangeSet.empty),
+        stepperGutter.effect.of(RangeSet.empty),
       ],
     });
   }
@@ -215,6 +232,28 @@ export function createEditor(parent, { onClick } = {}) {
     view.dispatch({ effects: selectionMarks.effect.of(rangeDecorations(ranges, "sym-selected")) });
   }
 
+  // The stepper's "current statement": an inline mark plus a gutter arrow on its line.
+  // start === null clears it (the stepper's current event isn't in this file).
+  function setStepperDecoration(start, end) {
+    if (start === null) {
+      view.dispatch({
+        effects: [stepperMarks.effect.of(Decoration.none), stepperGutter.effect.of(RangeSet.empty)],
+      });
+      return;
+    }
+    const marks = rangeDecorations([{ start, end }], "step-current");
+    const gutterBuilder = new RangeSetBuilder();
+    const line = view.state.doc.lineAt(start);
+    gutterBuilder.add(line.from, line.from, stepArrow);
+    view.dispatch({
+      effects: [stepperMarks.effect.of(marks), stepperGutter.effect.of(gutterBuilder.finish())],
+    });
+  }
+
+  function scrollIntoView(start) {
+    view.dispatch({ effects: EditorView.scrollIntoView(start, { y: "center" }) });
+  }
+
   function scrollTo(start, end) {
     view.dispatch({ effects: EditorView.scrollIntoView(start, { y: "center" }) });
     view.dispatch({ effects: flashMarks.effect.of(rangeDecorations([{ start, end }], "lyr-flash")) });
@@ -223,5 +262,14 @@ export function createEditor(parent, { onClick } = {}) {
     }, 700);
   }
 
-  return { view, openFile, setLayerDecorations, setExecDecorations, setSelectionDecorations, scrollTo };
+  return {
+    view,
+    openFile,
+    setLayerDecorations,
+    setExecDecorations,
+    setSelectionDecorations,
+    setStepperDecoration,
+    scrollTo,
+    scrollIntoView,
+  };
 }
