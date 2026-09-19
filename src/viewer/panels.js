@@ -1,5 +1,17 @@
 import { lineOfOffset } from "./marks-at.js";
 import { itemsOfLayer, checkState } from "./selection.js";
+import { verdictBadge, verdictClass, verdictTooltip, verdictCounts } from "./verdicts.js";
+
+const VERDICT_FILTER_VALUES = ["all", "impure", "pure", "unknown"];
+
+function appendVerdictBadge(container, effects) {
+  if (!effects) return;
+  const badge = document.createElement("span");
+  badge.className = `verdict-badge ${verdictClass(effects.verdict)}`;
+  badge.textContent = verdictBadge(effects.verdict);
+  badge.title = verdictTooltip(effects);
+  container.appendChild(badge);
+}
 
 export function buildLayout(app) {
   app.innerHTML = `
@@ -252,7 +264,9 @@ function renderItemRow(node, item, ctx, handlers, shortLabels) {
     ? formatCount(state, countOn(selection, item.marks), item.marks.length, "×")
     : `${firstMark.file}:${markLine(firstMark, sources, offsets)}`;
 
-  row.append(caret, cb, label, meta);
+  row.append(caret, cb, label);
+  if (node.layerId === "defs.methods" && item.symbol) appendVerdictBadge(row, ctx.methodEffects?.get(item.symbol));
+  row.append(meta);
 
   const wrap = document.createElement("div");
   wrap.className = "item-block";
@@ -384,7 +398,9 @@ function accordionHeader(node, level, ctx, handlers, solomable) {
   count.className = "rail-accordion-count";
   count.textContent = formatCount(state, countOn(selection, node.keys), node.keys.length, "");
 
-  header.append(pin, name, count);
+  header.append(pin, name);
+  if (node.kind === "method") appendVerdictBadge(header, node.effects);
+  header.append(count);
   if (isSoloed) {
     const badge = document.createElement("span");
     badge.className = "solo-badge";
@@ -439,6 +455,29 @@ function renderGroupAccordion(node, level, ctx, handlers) {
   return wrap;
 }
 
+// Segmented "all | impure N | pure N | unknown N" control for one file's accordion — hidden
+// entirely when the file has no methods with a known verdict (docs/ROUND-4.md).
+function renderVerdictFilter(file, methodNodes, ctx, handlers) {
+  const known = methodNodes.filter((n) => n.effects);
+  if (known.length === 0) return null;
+
+  const counts = verdictCounts(methodNodes.map((n) => n.effects));
+  const current = ctx.getFilter(file);
+
+  const wrap = document.createElement("div");
+  wrap.className = "verdict-filter";
+  for (const value of VERDICT_FILTER_VALUES) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const count = value === "all" ? methodNodes.length : counts[value];
+    btn.className = "verdict-filter-btn" + (value === current ? " active" : "") + (value !== "all" ? ` ${verdictClass(value)}` : "");
+    btn.textContent = `${value} ${count}`;
+    btn.addEventListener("click", () => handlers.onSetFilter(file, value));
+    wrap.appendChild(btn);
+  }
+  return wrap;
+}
+
 function renderFileAccordion(fileNode, ctx, handlers) {
   const { header, isOpen } = accordionHeader(fileNode, "file", ctx, handlers, true);
   const wrap = document.createElement("div");
@@ -446,17 +485,27 @@ function renderFileAccordion(fileNode, ctx, handlers) {
   wrap.dataset.nodeId = fileNode.id;
   wrap.appendChild(header);
   if (isOpen) {
+    const methodNodes = fileNode.children.filter((c) => c.kind === "method");
+    const filterEl = renderVerdictFilter(fileNode.label, methodNodes, ctx, handlers);
+    if (filterEl) wrap.appendChild(filterEl);
+
+    const filterValue = ctx.getFilter(fileNode.label);
     const body = document.createElement("div");
     body.className = "rail-accordion-body";
-    for (const child of fileNode.children) body.appendChild(renderGroupAccordion(child, child.kind, ctx, handlers));
+    for (const child of fileNode.children) {
+      // "Whole file" and "(top level)" always stay; a verdict filter only hides method groups.
+      if (filterValue !== "all" && child.kind === "method" && child.effects?.verdict !== filterValue) continue;
+      body.appendChild(renderGroupAccordion(child, child.kind, ctx, handlers));
+    }
     wrap.appendChild(body);
   }
   return wrap;
 }
 
 // ctx: { tree, selection, solo, focus, expanded, colours, activeFile, marksByKey, sources,
-// offsets }. handlers: { onToggleKeys(keys, on), onToggleExpand(id), onSoloNode(node),
-// onJump(key), onReset() }.
+// offsets, methodEffects (Map<symbol, effects>), getFilter(file) }. handlers: {
+// onToggleKeys(keys, on), onToggleExpand(id), onSoloNode(node), onJump(key), onReset(),
+// onSetFilter(file, value) }.
 export function renderRailPanel(container, ctx, handlers) {
   container.innerHTML = "";
   const [allNode, ...fileNodes] = ctx.tree.root.children;
@@ -575,7 +624,46 @@ const ROLE_LABELS = [
   ["reads", "Reads"],
 ];
 
-export function renderSymbolPanel(container, { symbol, entry, sources, offsets }, onJump) {
+// Verdict block for a method symbol (docs/ROUND-4.md): the badge + verdict word, its direct
+// effect kinds, and a clickable list of `via` callees (history-recorded jump-to-definition).
+function renderVerdictBlock(container, effects, onJumpToVia) {
+  if (!effects) return;
+
+  const verdict = document.createElement("div");
+  verdict.className = `sym-verdict ${verdictClass(effects.verdict)}`;
+  const badge = document.createElement("span");
+  badge.className = `verdict-badge ${verdictClass(effects.verdict)}`;
+  badge.textContent = verdictBadge(effects.verdict);
+  const word = document.createElement("span");
+  word.textContent = effects.verdict;
+  verdict.append(badge, word);
+  container.appendChild(verdict);
+
+  if (effects.direct.length) {
+    const direct = document.createElement("div");
+    direct.className = "sym-effects-line";
+    direct.textContent = `direct: ${effects.direct.join(", ")}`;
+    container.appendChild(direct);
+  }
+
+  const viaEntries = Object.entries(effects.via ?? {});
+  if (viaEntries.length) {
+    const via = document.createElement("div");
+    via.className = "sym-effects-via";
+    for (const [kind, symbols] of viaEntries) {
+      for (const callee of symbols) {
+        const row = document.createElement("div");
+        row.className = "sym-via-row";
+        row.textContent = `via ${kind}: ${callee}`;
+        row.addEventListener("click", () => onJumpToVia?.(callee));
+        via.appendChild(row);
+      }
+    }
+    container.appendChild(via);
+  }
+}
+
+export function renderSymbolPanel(container, { symbol, entry, sources, offsets, effects }, onJump, onJumpToVia) {
   container.innerHTML = "";
 
   if (!symbol || !entry) {
@@ -590,6 +678,8 @@ export function renderSymbolPanel(container, { symbol, entry, sources, offsets }
   name.className = "sym-name";
   name.textContent = symbol;
   container.appendChild(name);
+
+  renderVerdictBlock(container, effects, onJumpToVia);
 
   for (const [role, label] of ROLE_LABELS) {
     const refs = entry[role];

@@ -105,25 +105,24 @@ function classFor(layers) {
   if (namespaces.has("defs")) classes.push("ns-defs");
   if (namespaces.has("refs")) classes.push("ns-refs");
   if (layers.includes("vars.temps")) classes.push("ns-vars-temps");
+  if (namespaces.has("effects")) classes.push("lyr-effect");
   return classes.join(" ");
 }
 
 // strong: solo mode is active, so every rendered segment is already solo-only — paint it
-// with the near-opaque "lyr-solo" style instead of the subtle default.
+// with the near-opaque "lyr-solo" style instead of the subtle default. seg.title (optional,
+// set by main.js via effects.js titleForSegment): the hover tooltip for an effects.* token.
 function markDecorations(segments, colours, strong) {
   const sorted = [...segments].sort((a, b) => a.start - b.start);
   const builder = new RangeSetBuilder();
   for (const seg of sorted) {
     const cls = classFor(seg.layers) + (strong ? " lyr-solo" : "");
     const bg = colours[seg.layers[0]];
-    builder.add(
-      seg.start,
-      seg.end,
-      Decoration.mark({
-        class: cls,
-        attributes: { "data-marks": seg.marks.join(","), style: `--lyr-bg: ${bg};` },
-      }),
-    );
+    const effectLayer = seg.layers.find((id) => id.startsWith("effects."));
+    const style = effectLayer ? `--lyr-bg: ${bg}; --lyr-effect: ${colours[effectLayer]};` : `--lyr-bg: ${bg};`;
+    const attributes = { "data-marks": seg.marks.join(","), style };
+    if (seg.title) attributes.title = seg.title;
+    builder.add(seg.start, seg.end, Decoration.mark({ class: cls, attributes }));
   }
   return builder.finish();
 }

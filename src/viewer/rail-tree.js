@@ -69,6 +69,14 @@ function buildAllFilesNode(doc) {
   };
 }
 
+// The method's data.effects ({ verdict, direct, via }) off its defs.methods mark, or null
+// (top-level/no-verdict symbols, or a doc with no defs.methods layer at all).
+function methodEffectsFor(doc, symbol) {
+  const defsMethods = doc.layers.find((l) => l.id === "defs.methods");
+  const mark = defsMethods?.marks.find((m) => m.symbol === symbol);
+  return mark?.data?.effects ?? null;
+}
+
 function buildScopeNode(doc, file, symbol, label) {
   const idPrefix = `file/${file}/scope/${symbol}`;
   const layerNodes = layerNodesFor(doc, idPrefix, (layer) => layer.marks.filter((m) => m.file === file && m.data?.scope === symbol));
@@ -79,6 +87,7 @@ function buildScopeNode(doc, file, symbol, label) {
     kind: "method",
     keys: layerNodes.flatMap((n) => n.keys),
     children: layerNodes,
+    effects: methodEffectsFor(doc, symbol),
   };
 }
 

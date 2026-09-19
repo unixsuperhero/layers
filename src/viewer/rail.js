@@ -7,6 +7,8 @@ import { cycleSolo } from "./solo.js";
 
 const storageKey = (projectDir) => `layers:${projectDir}:rail`;
 
+const VERDICT_FILTERS = ["all", "impure", "pure", "unknown"];
+
 function loadStored(projectDir, doc) {
   try {
     const raw = localStorage.getItem(storageKey(projectDir));
@@ -16,6 +18,7 @@ function loadStored(projectDir, doc) {
       selection: pruneSelection(new Set(parsed.selection ?? []), doc),
       expanded: new Set(parsed.expanded ?? []),
       focus: !!parsed.focus,
+      filters: new Map(Object.entries(parsed.filters ?? {})),
     };
   } catch {
     return null;
@@ -39,6 +42,7 @@ export function createRail(projectDir, doc, initialFile) {
   let selection = stored ? stored.selection : defaultSelection(doc);
   let expanded = stored ? stored.expanded : defaultExpanded(initialFile);
   let focus = stored ? stored.focus : false;
+  let filters = stored ? stored.filters : new Map(); // file -> "all" | "impure" | "pure" | "unknown"
   let solo = null; // never persisted (URL-only, like today)
   let visibleFiles = [initialFile];
   let tree = buildRailTree(doc, visibleFiles);
@@ -47,7 +51,7 @@ export function createRail(projectDir, doc, initialFile) {
     try {
       localStorage.setItem(
         storageKey(projectDir),
-        JSON.stringify({ selection: [...selection], expanded: [...expanded], focus }),
+        JSON.stringify({ selection: [...selection], expanded: [...expanded], focus, filters: Object.fromEntries(filters) }),
       );
     } catch {
       // ignore (private browsing, quota, etc.)
@@ -66,11 +70,23 @@ export function createRail(projectDir, doc, initialFile) {
   function reset() {
     selection = defaultSelection(doc);
     expanded = defaultExpanded(visibleFiles[0]);
+    filters = new Map();
     try {
       localStorage.removeItem(storageKey(projectDir));
     } catch {
       // ignore
     }
+  }
+
+  function getFilter(file) {
+    return filters.get(file) ?? "all";
+  }
+
+  function setFilter(file, value) {
+    if (!VERDICT_FILTERS.includes(value)) return;
+    if (value === "all") filters.delete(file);
+    else filters.set(file, value);
+    persist();
   }
 
   function toggleExpanded(id) {
@@ -139,5 +155,7 @@ export function createRail(projectDir, doc, initialFile) {
     setSoloId,
     soloCycle,
     setFocus,
+    getFilter,
+    setFilter,
   };
 }

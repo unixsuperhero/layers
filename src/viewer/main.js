@@ -4,6 +4,8 @@ import { createNav, decideJump } from "./nav.js";
 import { assignPalette } from "./palette.js";
 import { marksAtPosition, innermostSymbol } from "./marks-at.js";
 import { markKey, setKeys } from "./selection.js";
+import { methodEffectsMap } from "./verdicts.js";
+import { titleForSegment } from "./effects.js";
 import { createRail } from "./rail.js";
 import { wireRailResize } from "./resize.js";
 import { createStepperController } from "./app-stepper.js";
@@ -78,6 +80,12 @@ export function mountApp(app, bundle, opts = {}) {
   const marksByKey = new Map();
   for (const layer of doc.layers) {
     for (const mark of layer.marks) marksByKey.set(markKey(layer.id, mark), { ...mark, layer: layer.id });
+  }
+  const methodEffects = methodEffectsMap(doc);
+
+  function sourceTextOf(mark) {
+    const off = offsets[mark.file];
+    return sources[mark.file].slice(off.byteToChar(mark.start), off.byteToChar(mark.end));
   }
 
   // A bundle's own `ui` acts like URL params for the very first boot of that bundle
@@ -208,6 +216,7 @@ export function mountApp(app, bundle, opts = {}) {
     }
     const strong = !!overrideKeysForDim;
     const segments = flatten(painted.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
+    for (const seg of segments) seg.title = titleForSegment(seg, painted, marksByKey, sourceTextOf);
     editor.setLayerDecorations(segments, colours, strong);
 
     const execLayer = doc.layers.find((l) => l.id === "exec.path");
@@ -306,6 +315,8 @@ export function mountApp(app, bundle, opts = {}) {
         marksByKey,
         sources,
         offsets,
+        methodEffects,
+        getFilter: (file) => rail.getFilter(file),
       },
       {
         onToggleKeys: (keys, on) => setSelection(setKeys(rail.selection, keys, on)),
@@ -315,6 +326,10 @@ export function mountApp(app, bundle, opts = {}) {
         },
         onSoloNode: (node) => setSolo(node),
         onJump: jumpToMark,
+        onSetFilter: (file, value) => {
+          rail.setFilter(file, value);
+          renderRail();
+        },
       },
     );
     layout.focusToggleEl.checked = rail.focus;
@@ -370,7 +385,12 @@ export function mountApp(app, bundle, opts = {}) {
   function selectSymbol(symbol) {
     selectedSymbol = symbol;
     paintSelection();
-    renderSymbolPanel(layout.symbolEl, { symbol, entry: symbol ? index[symbol] : null, sources, offsets }, jumpToRef);
+    renderSymbolPanel(
+      layout.symbolEl,
+      { symbol, entry: symbol ? index[symbol] : null, sources, offsets, effects: symbol ? (methodEffects.get(symbol) ?? null) : null },
+      jumpToRef,
+      (viaSymbol) => jumpToSymbol(viaSymbol),
+    );
   }
 
   // A jump pushes history, but the position we're jumping FROM also needs to be on the
@@ -471,6 +491,7 @@ export function mountApp(app, bundle, opts = {}) {
         sources,
         offsets,
         trace: doc.trace,
+        methodEffects,
         onGoto: (enterIndex) => {
           const event = doc.trace[enterIndex];
           jumpToRef({ file: event.file, start: event.start, end: event.end });

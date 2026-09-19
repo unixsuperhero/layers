@@ -4,6 +4,7 @@
 import { frameAt } from "../core/calltree.js";
 import { lineOfOffset } from "./marks-at.js";
 import { buildCallTreeRows, rowDepth, defaultExpandedIds } from "./calltree-rows.js";
+import { verdictBadge, verdictClass, verdictTooltip } from "./verdicts.js";
 
 function fileLine(sources, offsets, span) {
   const line = lineOfOffset(sources[span.file], offsets[span.file].byteToChar(span.start));
@@ -30,9 +31,9 @@ function appendSymbol(el, symbol) {
   el.append(ns, name);
 }
 
-// host: { containerEl, sources, offsets, trace, onGoto(enterIndex) }
+// host: { containerEl, sources, offsets, trace, onGoto(enterIndex), methodEffects? }
 export function createCallTreePanel(root, host) {
-  const { containerEl, sources, offsets, trace, onGoto } = host;
+  const { containerEl, sources, offsets, trace, onGoto, methodEffects } = host;
   const { rows, index } = buildCallTreeRows(root);
   const expanded = new Set(defaultExpandedIds(rows));
   let activeId = null;
@@ -123,6 +124,16 @@ export function createCallTreePanel(root, host) {
     if (r.kind === "call") appendSymbol(symbolEl, labelOf(r));
     else symbolEl.textContent = labelOf(r);
     line1.appendChild(symbolEl);
+    if (r.kind === "call") {
+      const effects = methodEffects?.get(r.display.node.symbol);
+      if (effects) {
+        const badge = document.createElement("span");
+        badge.className = `verdict-badge ${verdictClass(effects.verdict)}`;
+        badge.textContent = verdictBadge(effects.verdict);
+        badge.title = verdictTooltip(effects);
+        line1.appendChild(badge);
+      }
+    }
     const value = valueOf(r);
     if (value !== null) {
       const valueEl = document.createElement("span");

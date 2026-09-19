@@ -319,6 +319,38 @@ h3 {
   color: var(--fg);
 }
 
+/* Per-file verdict filter (docs/ROUND-4.md): compact segmented control under a file's
+   accordion header, hidden entirely when the file has no methods with a known verdict. */
+.verdict-filter {
+  display: flex;
+  gap: 2px;
+  margin: 2px 0 4px 18px;
+  flex-wrap: wrap;
+}
+
+.verdict-filter-btn {
+  background: var(--panel-bg);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
+.verdict-filter-btn:hover {
+  color: var(--fg);
+  background: var(--border);
+}
+
+.verdict-filter-btn.active {
+  border-color: var(--accent);
+  color: var(--fg);
+  font-weight: 600;
+}
+
 .level-file {
   margin-top: 8px;
 }
@@ -430,6 +462,29 @@ h3 {
   padding-left: 10px;
 }
 
+/* --- Verdict badges (docs/ROUND-4.md): ● impure / ○ pure / ? unknown, on method group
+   headers, defs.methods item rows, Call Tree rows, and the Symbol panel. --- */
+
+.verdict-badge {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  cursor: default;
+  margin-left: 2px;
+}
+
+.verdict-impure {
+  color: #e06c75;
+}
+
+.verdict-pure {
+  color: #98c379;
+}
+
+.verdict-unknown {
+  color: #d19a66;
+}
+
 .solo-badge {
   color: var(--accent);
   font-size: 10px;
@@ -478,6 +533,37 @@ h3 {
   color: var(--accent);
   word-break: break-all;
   margin-bottom: 4px;
+}
+
+.sym-verdict {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.sym-effects-line {
+  color: var(--fg-dim);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.sym-effects-via {
+  margin-bottom: 6px;
+}
+
+.sym-via-row {
+  color: var(--fg-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 0;
+}
+
+.sym-via-row:hover {
+  color: var(--accent);
 }
 
 .sym-row {
@@ -532,6 +618,22 @@ h3 {
 
 .ns-vars-temps {
   outline-style: dashed;
+}
+
+/* effects.* tokens (docs/ROUND-4.md): tinted bg (from .lyr above) + a wavy underline in the
+   effects layer's own colour — --lyr-effect is set alongside --lyr-bg in editor.js so this
+   stays correct even when an effects.* mark overlaps a vars/refs mark (whose --lyr would
+   otherwise win the cascade). Thickened/offset so the wave reads clearly on the dark theme. */
+.lyr-effect {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--lyr-effect, var(--lyr));
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+
+.lyr-effect.lyr-solo {
+  text-decoration-color: #10131a;
 }
 
 /* --- solo (focus) mode: soloed marks get a strong, near-opaque style; everything else

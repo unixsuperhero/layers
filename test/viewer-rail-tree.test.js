@@ -67,6 +67,21 @@ test("per-method grouping: one group per method with marks, in source order, sho
   assert.ok(summaryLayerIds.includes("defs.methods"));
 });
 
+test("method nodes carry the method's verdict effects (docs/ROUND-4.md), null when there's none", () => {
+  const tree = buildRailTree(doc, ["mailer.rb"]);
+  const deliver = byId(tree, "file/mailer.rb/scope/Mailer#deliver");
+  assert.deepEqual(deliver.effects, { verdict: "impure", direct: ["io"], via: {} });
+  const notify = byId(tree, "file/mailer.rb/scope/Mailer#notify");
+  assert.deepEqual(notify.effects, { verdict: "impure", direct: [], via: { io: ["Mailer#deliver"] } });
+
+  const noEffects = buildRailTree(
+    { layers: [{ id: "defs.methods", marks: [{ file: "a.rb", start: 0, end: 5, symbol: "A#b", role: "definition", data: { scope: "A#b" } }] }] },
+    ["a.rb"],
+  );
+  const node = byId(noEffects, "file/a.rb/scope/A#b");
+  assert.equal(node.effects, null);
+});
+
 test("top-level bucket lists exactly the scope-null marks of that file, and is absent when there are none", () => {
   const tree = buildRailTree(doc, ["invoice.rb", "main.rb"]);
   const mainFile = byId(tree, "file/main.rb");
