@@ -299,6 +299,7 @@ try {
   await page.keyboard.press("Escape");
   const soloAfterEscape = await page.evaluate(() => window.__layers.state.solo);
   check('real "Escape" key clears solo', soloAfterEscape === null);
+  check("solo chip is hidden once solo is cleared", !(await page.locator("#solo-chip").isVisible()));
 
   // reload with &solo=vars.* restores a group solo: both "total" and "@items" strong-styled
   await page.goto(`${base}/?project=fixtures/example-ruby&solo=vars.*`, { waitUntil: "networkidle" });

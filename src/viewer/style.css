@@ -223,6 +223,10 @@ h3 {
   font-size: 12px;
 }
 
+.solo-chip[hidden] {
+  display: none;
+}
+
 .solo-chip-clear {
   background: none;
   border: none;
