@@ -332,12 +332,13 @@ class StaticVisitor < Prism::Visitor
     record_occurrence(node.name, node.name_loc, role: "write", param: true) if node.name
   end
 
+  # Prism's name_loc for a keyword param covers "tax:" — drop the trailing colon.
   def visit_required_keyword_parameter_node(node)
-    record_occurrence(node.name, node.name_loc, role: "write", param: true)
+    record_occurrence(node.name, node.name_loc.copy(length: node.name_loc.length - 1), role: "write", param: true)
   end
 
   def visit_optional_keyword_parameter_node(node)
-    record_occurrence(node.name, node.name_loc, role: "write", param: true)
+    record_occurrence(node.name, node.name_loc.copy(length: node.name_loc.length - 1), role: "write", param: true)
     visit(node.value)
   end
 

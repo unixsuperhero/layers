@@ -34,6 +34,20 @@ class StaticVisitorTest < Minitest::Test
     assert_includes symbols, "Foo::Other"
   end
 
+  def test_keyword_param_marks_exclude_the_trailing_colon
+    source = <<~RUBY
+      class Cart
+        def total(tax: 0.1, round:)
+          tax + round
+        end
+      end
+    RUBY
+    v = visit(source)
+    texts = marks_named(v.var_marks, "vars.locals").select { |m| m.role == "write" }
+                                                   .map { |m| source.byteslice(m.start...m.finish) }
+    assert_equal %w[tax round], texts
+  end
+
   def test_def_self_is_a_singleton_method_symbol
     v = visit(<<~RUBY)
       class Widget
