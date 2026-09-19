@@ -260,10 +260,16 @@ export function createOpenDialog(onAnalyzed) {
         return;
       }
       const bundle = parseBundle(body);
-      if (body.warnings?.length) setWarnings(body.warnings);
-      setStatus(null);
       onAnalyzed(bundle);
-      dialog.close();
+      // With warnings, leave the dialog open so they're actually readable — closing
+      // immediately would mount the project and hide them in the same instant.
+      if (body.warnings?.length) {
+        setWarnings(body.warnings);
+        setStatus(`Analyzed with ${body.warnings.length} warning(s) — the project is now open.`);
+      } else {
+        setStatus(null);
+        dialog.close();
+      }
     } catch (err) {
       setStatus(err.message, "error");
     } finally {
