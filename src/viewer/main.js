@@ -4,7 +4,8 @@ import { createNav, decideJump } from "./nav.js";
 import { assignPalette } from "./palette.js";
 import { marksAtPosition, innermostSymbol } from "./marks-at.js";
 import { diffLocals } from "./locals-diff.js";
-import { paintedLayerIds, layersForSolo, cycleSolo } from "./solo.js";
+import { layersForSolo, cycleSolo } from "./solo.js";
+import { markKey, defaultSelection, setKeys, pruneSelection } from "./selection.js";
 import { flatten } from "../core/flatten.js";
 import { createStepper } from "../core/stepper.js";
 import {
@@ -18,6 +19,23 @@ import {
 } from "./panels.js";
 
 const DEFAULT_PROJECT = "fixtures/example-ruby";
+
+const storageKey = (projectDir) => `layers:${projectDir}:selection`;
+
+function loadStoredSelection(projectDir, doc) {
+  try {
+    const raw = localStorage.getItem(storageKey(projectDir));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return {
+      selection: pruneSelection(new Set(parsed.selection ?? []), doc),
+      expandedLayers: new Set(parsed.expandedLayers ?? []),
+      expandedItems: new Set(parsed.expandedItems ?? []),
+    };
+  } catch {
+    return null;
+  }
+}
 
 const STEP_KEYS = {
   ArrowLeft: "prev",
@@ -61,8 +79,26 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
 
   const layout = buildLayout(app);
 
-  const layerState = {};
-  for (const layer of doc.layers) layerState[layer.id] = layer.kind === "static";
+  const marksByKey = new Map();
+  for (const layer of doc.layers) {
+    for (const mark of layer.marks) marksByKey.set(markKey(layer.id, mark), { ...mark, layer: layer.id });
+  }
+
+  const stored = loadStoredSelection(projectDir, doc);
+  let selection = stored ? stored.selection : defaultSelection(doc);
+  let expandedLayers = stored ? stored.expandedLayers : new Set();
+  let expandedItems = stored ? stored.expandedItems : new Set();
+
+  function persist() {
+    try {
+      localStorage.setItem(
+        storageKey(projectDir),
+        JSON.stringify({ selection: [...selection], expandedLayers: [...expandedLayers], expandedItems: [...expandedItems] }),
+      );
+    } catch {
+      // ignore (private browsing, quota, etc.)
+    }
+  }
 
   const allLayerIds = doc.layers.map((l) => l.id);
   let solo = requestedSolo && layersForSolo(allLayerIds, requestedSolo).length ? requestedSolo : null;
@@ -106,6 +142,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
           symbol: mark.symbol,
           role: mark.role,
           layer: layer.id,
+          key: markKey(layer.id, mark),
         });
       }
     }
@@ -123,27 +160,41 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     editor.setSelectionDecorations(ranges);
   }
 
+  // Which of a set of file-scoped marks get painted: only selected ones, unless a solo is
+  // active and none of the soloed layer(s)' marks are selected — then paint the whole
+  // soloed set instead (see docs/SELECTION-AND-SCENES.md, Part A "Painting").
+  function selectMarksToPaint(marksInFile, soloedIds) {
+    if (!soloedIds) return marksInFile.filter((m) => selection.has(m.key));
+    const inSolo = marksInFile.filter((m) => soloedIds.has(m.layer));
+    const selectedInSolo = inSolo.filter((m) => selection.has(m.key));
+    return selectedInSolo.length > 0 ? selectedInSolo : inSolo;
+  }
+
   function paintFile(file) {
-    const enabledIds = new Set(allLayerIds.filter((id) => layerState[id]));
-    const activeIds = new Set(paintedLayerIds({ allIds: allLayerIds, enabledIds, solo }));
+    const soloedIds = solo ? new Set(layersForSolo(allLayerIds, solo)) : null;
 
     clickableMarks = computeClickableMarks(file);
-    const painted = clickableMarks.filter((m) => activeIds.has(m.layer));
+    const painted = selectMarksToPaint(clickableMarks, soloedIds);
     const segments = flatten(painted.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
     editor.setLayerDecorations(segments, colours, !!solo);
 
-    const execEnabled = activeIds.has("exec.path");
-    const execLayer = execEnabled ? doc.layers.find((l) => l.id === "exec.path") : null;
-    const execRanges = execLayer
+    const execLayer = doc.layers.find((l) => l.id === "exec.path");
+    const execMarksInFile = execLayer
       ? execLayer.marks
           .filter((m) => m.file === file)
-          .map((m) => ({ start: offsets[file].byteToChar(m.start), end: offsets[file].byteToChar(m.end) }))
+          .map((m) => ({
+            start: offsets[file].byteToChar(m.start),
+            end: offsets[file].byteToChar(m.end),
+            layer: "exec.path",
+            key: markKey("exec.path", m),
+          }))
       : [];
-    editor.setExecDecorations(execRanges, execEnabled);
+    const execRanges = selectMarksToPaint(execMarksInFile, soloedIds);
+    editor.setExecDecorations(execRanges, execRanges.length > 0);
 
     // Dim everything but the soloed layer(s) — except a solo of exec.path alone, which has
     // no inline marks and is shown via the line highlight + non-executed dimming above.
-    const execOnlySolo = solo && [...activeIds].every((id) => id.startsWith("exec."));
+    const execOnlySolo = solo && [...soloedIds].every((id) => id.startsWith("exec."));
     editor.setSoloDim(solo && !execOnlySolo ? segments.map((s) => ({ start: s.start, end: s.end })) : null);
 
     paintSelection();
@@ -181,30 +232,64 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     editor.openFile(file, sources[file]);
     renderTabs();
     paintFile(file);
+    renderLayers();
     syncURL();
+  }
+
+  function setSelection(next) {
+    selection = next;
+    paintFile(activeFile);
+    renderLayers();
+    persist();
+  }
+
+  function jumpToMark(key) {
+    const mark = marksByKey.get(key);
+    goToJump({
+      file: mark.file,
+      pos: { start: offsets[mark.file].byteToChar(mark.start), end: offsets[mark.file].byteToChar(mark.end) },
+    });
+  }
+
+  function resetSelection() {
+    selection = defaultSelection(doc);
+    expandedLayers = new Set();
+    expandedItems = new Set();
+    try {
+      localStorage.removeItem(storageKey(projectDir));
+    } catch {
+      // ignore
+    }
+    paintFile(activeFile);
+    renderLayers();
   }
 
   function renderLayers() {
     renderLayerPanel(
       layout.layersEl,
-      doc.layers,
-      layerState,
-      colours,
-      solo,
-      (id, on) => {
-        layerState[id] = on;
-        paintFile(activeFile);
-        renderLayers();
-      },
-      (ids, on) => {
-        for (const id of ids) layerState[id] = on;
-        paintFile(activeFile);
-        renderLayers();
-      },
-      (id) => setSolo(solo === id ? null : id),
-      (ns) => {
-        const value = `${ns}.*`;
-        setSolo(solo === value ? null : value);
+      { layers: doc.layers, selection, colours, solo, expandedLayers, expandedItems, activeFile, marksByKey, sources, offsets },
+      {
+        onToggle: (keys, on) => setSelection(setKeys(selection, keys, on)),
+        onSoloLayer: (id) => setSolo(solo === id ? null : id),
+        onSoloGroup: (ns) => {
+          const value = `${ns}.*`;
+          setSolo(solo === value ? null : value);
+        },
+        onToggleLayerCaret: (id) => {
+          if (expandedLayers.has(id)) expandedLayers.delete(id);
+          else expandedLayers.add(id);
+          renderLayers();
+          persist();
+        },
+        onToggleItemCaret: (layerId, symbol) => {
+          const key = `${layerId} ${symbol}`;
+          if (expandedItems.has(key)) expandedItems.delete(key);
+          else expandedItems.add(key);
+          renderLayers();
+          persist();
+        },
+        onJump: jumpToMark,
+        onReset: resetSelection,
       },
     );
   }
@@ -424,14 +509,24 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
       get solo() {
         return solo;
       },
-      layerState,
+      get selection() {
+        return [...selection];
+      },
+      // Derived: true when ANY mark of the layer is selected (kept for existing callers).
+      get layerState() {
+        const result = {};
+        for (const layer of doc.layers) result[layer.id] = layer.marks.some((m) => selection.has(markKey(layer.id, m)));
+        return result;
+      },
     },
     openFile,
     toggleLayer(id, on) {
-      layerState[id] = on;
-      paintFile(activeFile);
-      renderLayers();
+      const layer = doc.layers.find((l) => l.id === id);
+      if (!layer) return;
+      setSelection(setKeys(selection, layer.marks.map((m) => markKey(id, m)), on));
     },
+    setMarks: (keys, on) => setSelection(setKeys(selection, keys, on)),
+    resetSelection,
     selectSymbol,
     jumpToSymbol,
     solo: (idOrNull) => setSolo(idOrNull),

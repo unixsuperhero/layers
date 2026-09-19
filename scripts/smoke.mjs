@@ -301,7 +301,12 @@ try {
   check('real "Escape" key clears solo', soloAfterEscape === null);
   check("solo chip is hidden once solo is cleared", !(await page.locator("#solo-chip").isVisible()));
 
-  // reload with &solo=vars.* restores a group solo: both "total" and "@items" strong-styled
+  // reload with &solo=vars.* restores a group solo: both "total" and "@items" strong-styled.
+  // Clear the persisted selection first — the vars.locals checkbox click above (testing that
+  // a checkbox click doesn't affect solo) also flipped its selection off, which would
+  // otherwise survive this reload (localStorage persists across page.goto within one context)
+  // and break the "whole soloed group painted" assertion below.
+  await page.evaluate(() => localStorage.clear());
   await page.goto(`${base}/?project=fixtures/example-ruby&solo=vars.*`, { waitUntil: "networkidle" });
   await page.waitForSelector(".file-tab");
   const groupSoloState = await page.evaluate(() => window.__layers.state.solo);
