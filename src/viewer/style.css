@@ -1,0 +1,270 @@
+:root {
+  --bg: #1e2127;
+  --panel-bg: #22262e;
+  --border: #383e4a;
+  --fg: #d7dae0;
+  --fg-dim: #7d8494;
+  --accent: #61afef;
+  --mono-font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 var(--mono-font);
+}
+
+#app {
+  height: 100vh;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 300px;
+  height: 100%;
+}
+
+.col {
+  min-width: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.col-right {
+  border-right: none;
+}
+
+.col-left {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.col-right {
+  padding: 8px;
+}
+
+.col-center {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-dim);
+  margin: 0 0 6px;
+}
+
+h3 {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin: 10px 0 4px;
+}
+
+.nav-toolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.nav-toolbar button {
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.nav-toolbar button:hover {
+  background: var(--border);
+}
+
+.file-list-item {
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-list-item:hover {
+  background: var(--panel-bg);
+}
+
+.file-list-item.active {
+  background: var(--accent);
+  color: #10131a;
+}
+
+.file-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.file-tab {
+  background: var(--panel-bg);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.file-tab.active {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.editor-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-host .cm-editor {
+  height: 100%;
+}
+
+.layer-group {
+  margin-bottom: 10px;
+}
+
+.layer-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 2px 16px;
+  cursor: pointer;
+}
+
+.layer-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.layer-id {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-count {
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.sym-empty {
+  color: var(--fg-dim);
+}
+
+.sym-name {
+  font-weight: 700;
+  color: var(--accent);
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.sym-row {
+  padding: 2px 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sym-row:hover {
+  color: var(--accent);
+}
+
+.error-screen {
+  padding: 24px;
+  max-width: 800px;
+}
+
+.error-screen h1 {
+  color: #e06c75;
+}
+
+.error-screen li {
+  font-family: var(--mono-font);
+  margin-bottom: 4px;
+}
+
+/* --- layer marks (namespace-generic parts; per-layer colour is injected at runtime) --- */
+
+.lyr {
+  border-radius: 2px;
+}
+
+.sym-selected {
+  outline: 1px solid #fff;
+  outline-offset: 1px;
+}
+
+@keyframes lyr-flash-fade {
+  from {
+    background-color: rgba(255, 255, 255, 0.55);
+  }
+  to {
+    background-color: rgba(255, 255, 255, 0);
+  }
+}
+
+.lyr-flash {
+  animation: lyr-flash-fade 0.7s ease-out;
+}
+
+/* --- exec.* line decorations --- */
+
+.cm-line.lyr-exec-path {
+  background-color: rgba(80, 200, 120, 0.12);
+}
+
+.cm-line.lyr-dimmed {
+  opacity: 0.45;
+}
+
+.cm-exec-gutter {
+  width: 14px;
+}
+
+.exec-gutter-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: 5px auto 0;
+  border-radius: 50%;
+  background: #50c878;
+}
