@@ -65,6 +65,11 @@ try {
   const activeFile1 = await page.evaluate(() => window.__layers.state.activeFile);
   check("invoice.rb showing by default", activeFile1 === "invoice.rb");
 
+  // stepper panel visible, but an untouched stepper must not steal the initial file
+  check("stepper panel is visible", await page.locator("#stepper-panel").isVisible());
+  check("untouched stepper does not steal the initial file", (await page.evaluate(() => window.__layers.state.activeFile)) === "invoice.rb");
+  check("untouched stepper paints no current-statement decoration", (await page.locator(".step-current").count()) === 0);
+
   const summaryHasClass = await page.evaluate(() => {
     const spans = [...document.querySelectorAll(".lyr-defs-methods")];
     return spans.some((el) => el.textContent === "summary");
@@ -129,6 +134,89 @@ try {
   await mailerRef.click({ modifiers: ["ControlOrMeta"] });
   const activeFile4 = await page.evaluate(() => window.__layers.state.activeFile);
   check("cmd/ctrl-click on Mailer jumps to mailer.rb", activeFile4 === "mailer.rb");
+
+  // --- Stepper ---
+
+  // goto(6) -> mailer.rb, current-statement decoration is exactly "body = invoice.summary"
+  await page.evaluate(() => window.__layers.stepper.goto(6));
+  const goto6 = await page.evaluate(() => ({
+    file: window.__layers.state.activeFile,
+    text: document.querySelector(".step-current")?.textContent,
+  }));
+  check("goto(6) active tab is mailer.rb", goto6.file === "mailer.rb");
+  check('goto(6) current-statement text is "body = invoice.summary"', goto6.text === "body = invoice.summary");
+
+  // stepOver from 6 -> 19, still mailer.rb, "deliver(body)"
+  await page.evaluate(() => window.__layers.stepper.stepOver());
+  const stepOver6 = await page.evaluate(() => ({
+    cursor: window.__layers.stepper.cursor,
+    file: window.__layers.state.activeFile,
+    text: document.querySelector(".step-current")?.textContent,
+  }));
+  check("stepOver from 6 lands on cursor 19", stepOver6.cursor === 19);
+  check("stepOver from 6 stays on mailer.rb", stepOver6.file === "mailer.rb");
+  check('stepOver from 6 shows "deliver(body)"', stepOver6.text === "deliver(body)");
+
+  // next from 6 -> 7, invoice.rb
+  await page.evaluate(() => window.__layers.stepper.goto(6));
+  await page.evaluate(() => window.__layers.stepper.next());
+  const next6 = await page.evaluate(() => ({ cursor: window.__layers.stepper.cursor, file: window.__layers.state.activeFile }));
+  check("next from 6 lands on cursor 7", next6.cursor === 7);
+  check("next from 6 opens invoice.rb", next6.file === "invoice.rb");
+
+  // locals at 14 (arriving from 11): total=10, item=32, both changed
+  await page.evaluate(() => window.__layers.stepper.goto(11));
+  await page.evaluate(() => window.__layers.stepper.goto(14));
+  const locals14 = await page.evaluate(() =>
+    [...document.querySelectorAll(".step-locals tr")].map((tr) => ({
+      name: tr.dataset.name,
+      value: tr.children[1].textContent,
+      changed: tr.classList.contains("changed"),
+    })),
+  );
+  check(
+    "locals at 14 show total=10 and item=32, both changed",
+    locals14.some((r) => r.name === "total" && r.value === "10" && r.changed) &&
+      locals14.some((r) => r.name === "item" && r.value === "32" && r.changed),
+  );
+
+  await page.evaluate(() => window.__layers.toggleLayer("exec.path", true));
+  await page.screenshot({ path: join(OUT_DIR, "stepper.png") });
+
+  // stack at 17: Mailer#notify then Invoice#summary, outermost first
+  await page.evaluate(() => window.__layers.stepper.goto(17));
+  const stack17 = await page.locator(".step-frame").allTextContents();
+  check("stack at 17 is [Mailer#notify, Invoice#summary]", JSON.stringify(stack17) === JSON.stringify(["Mailer#notify", "Invoice#summary"]));
+
+  // return value at 18
+  await page.evaluate(() => window.__layers.stepper.goto(18));
+  const value18 = await page.locator(".step-value").textContent();
+  check('return value at 18 is "Total: 42"', value18 === '"Total: 42"');
+
+  // real keyboard "n" performs a step over
+  await page.keyboard.press("n");
+  const keyStepOver = await page.evaluate(() => window.__layers.stepper.cursor);
+  check('keyboard "n" steps over (18 -> 19)', keyStepOver === 19);
+
+  // stepping doesn't affect back(): symbol jump, step a few times, back() returns to the pre-jump spot
+  await page.evaluate(() => window.__layers.openFile("main.rb"));
+  await page.evaluate(() => window.__layers.jumpToSymbol("Invoice#summary"));
+  await page.evaluate(() => window.__layers.stepper.next());
+  await page.evaluate(() => window.__layers.stepper.stepOver());
+  await page.evaluate(() => window.__layers.back());
+  const backAfterSteps = await page.evaluate(() => window.__layers.state.activeFile);
+  check("stepping doesn't disturb back(): returns to main.rb", backAfterSteps === "main.rb");
+
+  // URL carries i= after stepping
+  const urlAfterSteps = await page.evaluate(() => location.search);
+  check("URL contains i= after stepping", new URLSearchParams(urlAfterSteps).has("i"));
+
+  // reload with ?i=14 restores cursor 14 on invoice.rb
+  await page.goto(`${base}/?project=fixtures/example-ruby&i=14`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const reload14 = await page.evaluate(() => ({ cursor: window.__layers.stepper.cursor, file: window.__layers.state.activeFile }));
+  check("reload with i=14 restores cursor 14", reload14.cursor === 14);
+  check("reload with i=14 opens invoice.rb", reload14.file === "invoice.rb");
 
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);
