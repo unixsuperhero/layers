@@ -278,3 +278,12 @@ test('an entry that raises reports the exception class and message', () => {
     rmSync(out, { recursive: true, force: true });
   }
 });
+
+test('--stdout prints a valid single-file document and writes nothing', () => {
+  const r = run([path.join(FIXTURE_SRC, 'invoice.rb'), '--stdout']);
+  assert.equal(r.status, 0, r.stderr);
+  const doc = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(doc.files), ['invoice.rb']);
+  assert.ok(validate(doc).ok, JSON.stringify(validate(doc).errors));
+  assert.ok(!('trace' in doc));
+});

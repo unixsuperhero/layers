@@ -40,11 +40,12 @@ def parse_argv(argv)
     o.on("--root DIR") { |v| options[:root] = v }
     o.on("--out DIR") { |v| options[:out] = v }
     o.on("--bundle FILE") { |v| options[:bundle] = v }
+    o.on("--stdout", "print the layers document (JSON) to stdout -- for editor integrations") { options[:stdout] = true }
     o.on("--name NAME") { |v| options[:name] = v }
   end
   inputs = parser.parse(argv)
   fail_with("no input paths given") if inputs.empty?
-  fail_with("at least one of --out or --bundle is required") unless options[:out] || options[:bundle]
+  fail_with("at least one of --out, --bundle or --stdout is required") unless options[:out] || options[:bundle] || options[:stdout]
   [inputs, options]
 end
 
@@ -266,6 +267,7 @@ def main
 
   write_project_dir(options[:out], name, "src", sorted_rel, entry_rel, sources, doc) if options[:out]
   write_bundle(options[:bundle], name, "src", sorted_rel, entry_rel, sources, doc) if options[:bundle]
+  $stdout.write(JSON.pretty_generate(doc), "\n") if options[:stdout]
 rescue AnalyzeError, Errno::ENOENT => e
   warn "error: #{e.message}"
   exit 1
