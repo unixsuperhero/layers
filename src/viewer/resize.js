@@ -51,11 +51,13 @@ export function wireResizeHandle(handle, { root, varName, getWidth, min = 180, m
   return { apply };
 }
 
-const widthKey = (projectDir, name) => `layers:${projectDir}:${name}`;
+// Widths are a personal UI preference, not project data — one global key, unlike
+// selection/accordions/presentation/focus which are namespaced per bundle (docs/ROUND-3.md C).
+const widthKey = (name) => `layers:${name}`;
 
-function loadWidth(projectDir, name, fallback) {
+function loadWidth(name, fallback) {
   try {
-    const raw = localStorage.getItem(widthKey(projectDir, name));
+    const raw = localStorage.getItem(widthKey(name));
     const n = raw === null ? NaN : Number(raw);
     return Number.isFinite(n) ? n : fallback;
   } catch {
@@ -63,20 +65,20 @@ function loadWidth(projectDir, name, fallback) {
   }
 }
 
-function saveWidth(projectDir, name, px) {
+function saveWidth(name, px) {
   try {
-    localStorage.setItem(widthKey(projectDir, name), String(px));
+    localStorage.setItem(widthKey(name), String(px));
   } catch {
     // ignore
   }
 }
 
 // Wires both rail resize handles (the rail's right edge, the right column's left edge),
-// restoring + persisting each width per project. root: the element carrying the CSS custom
+// restoring + persisting each width globally. root: the element carrying the CSS custom
 // properties the layout grid reads (docs/ROUND-3.md D "Resizable").
-export function wireRailResize(root, { railHandle, rightHandle }, projectDir, { signal } = {}) {
-  let railWidth = loadWidth(projectDir, "railWidth", 260);
-  let rightWidth = loadWidth(projectDir, "rightWidth", 300);
+export function wireRailResize(root, { railHandle, rightHandle }, { signal } = {}) {
+  let railWidth = loadWidth("railWidth", 260);
+  let rightWidth = loadWidth("rightWidth", 300);
   root.style.setProperty("--rail-width", `${railWidth}px`);
   root.style.setProperty("--right-width", `${rightWidth}px`);
 
@@ -89,7 +91,7 @@ export function wireRailResize(root, { railHandle, rightHandle }, projectDir, { 
     signal,
     onChange: (px) => {
       railWidth = px;
-      saveWidth(projectDir, "railWidth", px);
+      saveWidth("railWidth", px);
     },
   });
   wireResizeHandle(rightHandle, {
@@ -101,7 +103,9 @@ export function wireRailResize(root, { railHandle, rightHandle }, projectDir, { 
     signal,
     onChange: (px) => {
       rightWidth = px;
-      saveWidth(projectDir, "rightWidth", px);
+      saveWidth("rightWidth", px);
     },
   });
+
+  return { getRailWidth: () => railWidth, getRightWidth: () => rightWidth };
 }

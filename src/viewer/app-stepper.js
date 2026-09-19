@@ -20,8 +20,8 @@ export const STEP_KEYS = {
 // stepper: createStepper(doc.trace) result, or null when doc.trace is empty.
 // host: { editor, offsets, stepperPanelEl, jumpToRef(ref), openFile(file), getActiveFile(),
 //         syncURL() }
-export function createStepperController(stepper, host) {
-  let active = false;
+export function createStepperController(stepper, host, { initialActive = false } = {}) {
+  let active = initialActive;
   let lastLocals = null;
 
   function paint(activeFile) {

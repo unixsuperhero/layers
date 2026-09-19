@@ -48,9 +48,9 @@ export async function loadInitialPresentation(storageKey, projectDir, doc) {
 //   paintFile(file), renderRail(), renderChip(), syncURL(),
 //   rail: { get selection(), get solo(), setSoloNode(node|null) },
 //   stepper: stepperController | null }
-export function createScenesController(initialPresentation, host) {
+export function createScenesController(initialPresentation, host, { initialActiveSceneId = null } = {}) {
   let presentation = initialPresentation;
-  let activeSceneId = null;
+  let activeSceneId = initialActiveSceneId;
   let pinStep = false;
   let message = null;
 

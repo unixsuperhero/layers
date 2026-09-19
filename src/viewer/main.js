@@ -3,74 +3,23 @@ import { createEditor } from "./editor.js";
 import { createNav, decideJump } from "./nav.js";
 import { assignPalette } from "./palette.js";
 import { marksAtPosition, innermostSymbol } from "./marks-at.js";
-import { diffLocals } from "./locals-diff.js";
 import { markKey, setKeys } from "./selection.js";
 import { createRail } from "./rail.js";
 import { wireRailResize } from "./resize.js";
-import { addScene, duplicateScene, moveScene, renameScene, updateScene, removeScene, cycleScene, parsePresentation } from "./scenes.js";
-import { createScenesPanel } from "./scenes-panel.js";
+import { createStepperController } from "./app-stepper.js";
+import { createScenesController, loadInitialPresentation } from "./app-scenes.js";
+import { wireAppKeys } from "./app-keys.js";
+import { parseAppParams, buildAppQuery } from "./app-url.js";
+import { wireToolbar } from "./toolbar.js";
+import { createOpenDialog } from "./open-dialog.js";
+import { assembleBundle, bundleKey } from "../core/bundle.js";
 import { flatten } from "../core/flatten.js";
 import { createStepper } from "../core/stepper.js";
-import {
-  buildLayout,
-  wireRightSections,
-  renderFileList,
-  renderFileTabs,
-  renderRailPanel,
-  renderSymbolPanel,
-  renderStepperPanel,
-  layerStylesheet,
-} from "./panels.js";
+import { buildSymbolIndex } from "../core/symbols.js";
+import { makeOffsetMap } from "../core/offsets.js";
+import { buildLayout, wireRightSections, renderFileList, renderFileTabs, renderRailPanel, renderSymbolPanel, layerStylesheet } from "./panels.js";
 
 const DEFAULT_PROJECT = "fixtures/example-ruby";
-
-const presentationStorageKey = (projectDir) => `layers:${projectDir}:presentation`;
-
-function loadStoredPresentation(projectDir, doc) {
-  try {
-    const raw = localStorage.getItem(presentationStorageKey(projectDir));
-    if (!raw) return null;
-    return parsePresentation(JSON.parse(raw), doc).presentation;
-  } catch {
-    return null;
-  }
-}
-
-// A 404, or the dev server's SPA fallback (HTML instead of JSON), both mean "no presentation
-// file" — never an error.
-async function fetchPresentationFile(projectDir) {
-  try {
-    const res = await fetch(`/${projectDir}/presentation.json`);
-    if (!res.ok) return null;
-    return JSON.parse(await res.text());
-  } catch {
-    return null;
-  }
-}
-
-async function loadInitialPresentation(projectDir, doc) {
-  const stored = loadStoredPresentation(projectDir, doc);
-  if (stored) return stored;
-  const fetched = await fetchPresentationFile(projectDir);
-  if (!fetched) return { version: 1, scenes: [] };
-  try {
-    return parsePresentation(fetched, doc).presentation;
-  } catch {
-    return { version: 1, scenes: [] };
-  }
-}
-
-const STEP_KEYS = {
-  ArrowLeft: "prev",
-  k: "prev",
-  ArrowRight: "next",
-  j: "next",
-  n: "stepOver",
-  p: "stepBackOver",
-  o: "stepOut",
-  Home: "first",
-  End: "last",
-};
 
 function renderError(app, errors) {
   app.innerHTML = "";
@@ -96,80 +45,87 @@ function injectStylesheet(css) {
   document.head.appendChild(style);
 }
 
-function boot(
-  app,
-  projectDir,
-  { project, doc, sources, offsets, index },
-  requestedFile,
-  requestedI,
-  requestedSolo,
-  requestedFocus,
-  initialPresentation,
-  requestedScene,
-) {
+function deriveDocData(doc, sources) {
+  const offsets = {};
+  for (const file of Object.keys(sources)) offsets[file] = makeOffsetMap(sources[file]);
+  return { offsets, index: buildSymbolIndex(doc) };
+}
+
+// Mounts a bundle into `app`, replacing whatever was there. Returns { unmount() } so the
+// caller can cleanly tear down the old editor/listeners before mounting a different bundle —
+// no page reload, no duplicate key handlers, no leaked CodeMirror views (docs/ROUND-3.md C).
+//
+// opts: { projectDir (string|null — set only when loaded via ?project=), requestedFile,
+//   requestedI, requestedSolo, requestedFocus, requestedScene (all from the URL, first boot
+//   only), openDialog (the Open… dialog singleton), remount(bundle, opts) }
+export function mountApp(app, bundle, opts = {}) {
+  const { project, sources, doc } = bundle;
+  const { offsets, index } = deriveDocData(doc, sources);
+  const storageKey = bundleKey(bundle);
+  const projectDir = opts.projectDir ?? null;
+
+  const controller = new AbortController();
+  const { signal } = controller;
+
   const colours = assignPalette(doc.layers.map((l) => l.id));
   injectStylesheet(layerStylesheet(doc.layers, colours));
 
   const layout = buildLayout(app);
-  wireRightSections(app, projectDir);
+  wireRightSections(app, storageKey);
 
   const marksByKey = new Map();
   for (const layer of doc.layers) {
     for (const mark of layer.marks) marksByKey.set(markKey(layer.id, mark), { ...mark, layer: layer.id });
   }
 
+  // A bundle's own `ui` acts like URL params for the very first boot of that bundle
+  // (Import/Open…); actual URL params (only present on the page's initial load) win when both
+  // are given, since only one of the two is ever populated at a time in practice.
+  const requestedFile = opts.requestedFile ?? bundle.ui?.file ?? null;
+  const requestedI = opts.requestedI ?? (bundle.ui?.i !== null && bundle.ui?.i !== undefined ? String(bundle.ui.i) : null);
+  const requestedSolo = opts.requestedSolo ?? bundle.ui?.solo ?? null;
+  const requestedFocus = opts.requestedFocus ?? (bundle.ui?.focus ? "1" : null);
+  const requestedScene = opts.requestedScene ?? (bundle.ui?.scene !== null && bundle.ui?.scene !== undefined ? String(bundle.ui.scene) : null);
+
   const initialFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
-  const rail = createRail(projectDir, doc, initialFile);
+  const rail = createRail(storageKey, doc, initialFile);
+  // Bundle values win over localStorage on import (docs/ROUND-3.md C).
+  if (Array.isArray(bundle.selection)) rail.setSelection(new Set(bundle.selection));
 
-  wireRailResize(document.documentElement, { railHandle: layout.railResizeEl, rightHandle: layout.rightResizeEl }, projectDir);
+  const resizeHandles = wireRailResize(document.documentElement, { railHandle: layout.railResizeEl, rightHandle: layout.rightResizeEl }, { signal });
 
-  let presentation = initialPresentation;
-  let scenesMessage = null;
-  let pinStep = false;
-
-  function persistPresentation() {
-    try {
-      localStorage.setItem(presentationStorageKey(projectDir), JSON.stringify(presentation));
-    } catch {
-      // ignore
-    }
-  }
+  const presentation = bundle.presentation;
 
   // `&scene=` takes precedence over `&solo=` (docs/SELECTION-AND-SCENES.md Part B).
   const sceneIdx = requestedScene !== null ? Number(requestedScene) : null;
-  let activeSceneId = Number.isInteger(sceneIdx) && presentation.scenes[sceneIdx - 1] ? presentation.scenes[sceneIdx - 1].id : null;
-  if (!activeSceneId && requestedSolo) rail.setSoloId(requestedSolo);
+  const initialActiveSceneId = Number.isInteger(sceneIdx) && presentation.scenes[sceneIdx - 1] ? presentation.scenes[sceneIdx - 1].id : null;
+  if (!initialActiveSceneId && requestedSolo) rail.setSoloId(requestedSolo);
   if (requestedFocus === "1") rail.setFocus(true);
 
   let activeFile = initialFile;
-  if (activeSceneId) {
-    const scene = presentation.scenes.find((s) => s.id === activeSceneId);
+  if (initialActiveSceneId) {
+    const scene = presentation.scenes.find((s) => s.id === initialActiveSceneId);
     if (scene.file && project.files.includes(scene.file)) activeFile = scene.file;
   }
-  let selectedSymbol = null;
-  let clickableMarks = []; // char-offset marks of ALL non-exec layers — clicks work whether or not a layer is painted
 
-  const stepper = doc.trace && doc.trace.length ? createStepper(doc.trace) : null;
-  // Stepper starts driving the editor (file switches, decoration, URL `i=`) only once the
-  // user interacts with it, or `i=` was present on load — so the default view is unchanged.
-  let stepperActive = false;
-  let lastStepperLocals = null;
+  const traceStepper = doc.trace && doc.trace.length ? createStepper(doc.trace) : null;
+  let stepperPrimed = false;
 
-  if (stepper && requestedI !== null) {
+  if (traceStepper && requestedI !== null) {
     const i = Number(requestedI);
     if (Number.isInteger(i)) {
-      stepper.goto(i);
-      stepperActive = true;
-      activeFile = stepper.current().file;
+      traceStepper.goto(i);
+      stepperPrimed = true;
+      activeFile = traceStepper.current().file;
     }
   }
 
-  if (stepper && activeSceneId) {
-    const scene = presentation.scenes.find((s) => s.id === activeSceneId);
+  if (traceStepper && initialActiveSceneId) {
+    const scene = presentation.scenes.find((s) => s.id === initialActiveSceneId);
     if (scene.step !== null) {
-      stepper.goto(scene.step);
-      stepperActive = true;
-      activeFile = stepper.current().file;
+      traceStepper.goto(scene.step);
+      stepperPrimed = true;
+      activeFile = traceStepper.current().file;
     }
   }
 
@@ -200,6 +156,9 @@ function boot(
     return marks;
   }
 
+  let selectedSymbol = null;
+  let clickableMarks = []; // char-offset marks of ALL non-exec layers — clicks work whether or not a layer is painted
+
   function paintSelection() {
     if (!selectedSymbol) {
       editor.setSelectionDecorations([]);
@@ -221,14 +180,10 @@ function boot(
     return selectedInOverride.length > 0 ? selectedInOverride : inOverride;
   }
 
-  function activeScene() {
-    return activeSceneId ? presentation.scenes.find((s) => s.id === activeSceneId) : null;
-  }
-
   // Precedence: an active scene > a name-click solo > Focus > plain selection painting
   // (docs/ROUND-3.md D — a solo/scene "temporarily overrides" Focus while active).
   function paintFile(file) {
-    const scene = activeScene();
+    const scene = scenes.activeScene();
     const sceneKeys = scene ? new Set(scene.marks) : null;
     const soloKeys = rail.solo ? new Set(rail.solo.keys) : null;
     const focusOn = rail.focus && !sceneKeys && !soloKeys;
@@ -278,19 +233,7 @@ function boot(
     editor.setSoloDim(dim ? segments.map((s) => ({ start: s.start, end: s.end })) : null);
 
     paintSelection();
-    paintStepper();
-  }
-
-  // "current statement" decoration: only in the file the stepper is currently on, and only
-  // once the stepper is active (unstarted stepper must not mark up the default-opened file).
-  function paintStepper() {
-    if (!stepper) return;
-    const event = stepper.current();
-    if (!stepperActive || !event || event.file !== activeFile) {
-      editor.setStepperDecoration(null);
-      return;
-    }
-    editor.setStepperDecoration(offsets[activeFile].byteToChar(event.start), offsets[activeFile].byteToChar(event.end));
+    stepper?.paint(activeFile);
   }
 
   function renderTabs() {
@@ -299,25 +242,29 @@ function boot(
   }
 
   function syncURL() {
-    const params = new URLSearchParams();
-    params.set("project", projectDir);
-    params.set("file", activeFile);
-    if (stepper && stepperActive) params.set("i", String(stepper.cursor));
-    if (activeSceneId) {
-      const idx = presentation.scenes.findIndex((s) => s.id === activeSceneId);
-      if (idx !== -1) params.set("scene", String(idx + 1));
-    } else if (rail.solo) {
-      params.set("solo", rail.solo.id);
-    }
-    if (rail.focus) params.set("focus", "1");
-    history.replaceState(null, "", `?${params.toString()}`);
+    const activeIdx = scenes.activeSceneId ? scenes.presentation.scenes.findIndex((s) => s.id === scenes.activeSceneId) : -1;
+    const qs = buildAppQuery({
+      project: projectDir,
+      file: activeFile,
+      i: stepper && stepper.active ? traceStepper.cursor : null,
+      sceneIndex: activeIdx !== -1 ? activeIdx + 1 : null,
+      solo: rail.solo ? rail.solo.id : null,
+      focus: rail.focus,
+    });
+    history.replaceState(null, "", `?${qs}`);
   }
 
-  function openFile(file) {
+  // Switches the open file's editor/tabs without painting or re-rendering the rail — used by
+  // scene activation, which paints/renders once afterward regardless of whether the file changed.
+  function openFileSilent(file) {
     activeFile = file;
     rail.openFile(file);
     editor.openFile(file, sources[file]);
     renderTabs();
+  }
+
+  function openFile(file) {
+    openFileSilent(file);
     paintFile(file);
     renderRail();
     syncURL();
@@ -376,7 +323,7 @@ function boot(
     paintFile(activeFile);
     renderRail();
     renderChip();
-    renderScenes();
+    scenes.render();
     syncURL();
   }
 
@@ -399,14 +346,14 @@ function boot(
 
   // Chip above the editor: shows whichever display override (scene or solo) is active.
   function renderChip() {
-    const scene = activeScene();
+    const scene = scenes.activeScene();
     layout.soloChipEl.hidden = !scene && !rail.solo;
     if (!scene && !rail.solo) return;
     layout.soloChipEl.innerHTML = "";
     const text = document.createElement("span");
     if (scene) {
-      const idx = presentation.scenes.findIndex((s) => s.id === scene.id) + 1;
-      text.textContent = `scene ${idx}/${presentation.scenes.length}: ${scene.name}`;
+      const idx = scenes.presentation.scenes.findIndex((s) => s.id === scene.id) + 1;
+      text.textContent = `scene ${idx}/${scenes.presentation.scenes.length}: ${scene.name}`;
     } else {
       text.textContent = `solo: ${rail.solo.label}`;
     }
@@ -414,158 +361,8 @@ function boot(
     clear.type = "button";
     clear.className = "solo-chip-clear";
     clear.textContent = "✕";
-    clear.addEventListener("click", () => (scene ? activateScene(null) : setSolo(null)));
+    clear.addEventListener("click", () => (scene ? scenes.activate(null) : setSolo(null)));
     layout.soloChipEl.append(text, clear);
-  }
-
-  // --- Scenes ---
-
-  // Exactly what is painted right now (selection, or the solo override) across ALL files —
-  // the capture used by "+ from view" and "⟲ update" (docs/SELECTION-AND-SCENES.md Part B).
-  // Generalized for any solo node: grouped by real layer id (as encoded in each markKey),
-  // "selected ones, else the whole layer" per group — the project-wide analogue of a
-  // per-file solo fallback (docs/VIEWER.md "Deviations").
-  function currentPaintedKeys() {
-    if (!rail.solo) return [...rail.selection];
-    const byLayer = new Map();
-    for (const key of rail.solo.keys) {
-      const layerId = key.split("|")[0];
-      if (!byLayer.has(layerId)) byLayer.set(layerId, []);
-      byLayer.get(layerId).push(key);
-    }
-    const keys = [];
-    for (const layerKeys of byLayer.values()) {
-      const selected = layerKeys.filter((k) => rail.selection.has(k));
-      keys.push(...(selected.length > 0 ? selected : layerKeys));
-    }
-    return keys;
-  }
-
-  function captureView() {
-    return { file: activeFile, marks: currentPaintedKeys() };
-  }
-
-  function defaultSceneName() {
-    return `Scene ${presentation.scenes.length + 1}`;
-  }
-
-  function addSceneFromView(name, { pinStep: pinStepOverride } = {}) {
-    const usePinStep = pinStepOverride ?? pinStep;
-    const { file, marks } = captureView();
-    const step = usePinStep && stepper ? stepper.cursor : null;
-    presentation = addScene(presentation, { name, file, marks, step });
-    persistPresentation();
-    renderScenes();
-  }
-
-  function duplicateSceneById(id) {
-    presentation = duplicateScene(presentation, id);
-    persistPresentation();
-    renderScenes();
-    renderChip();
-  }
-
-  function moveSceneById(id, toIndex) {
-    presentation = moveScene(presentation, id, toIndex);
-    persistPresentation();
-    renderScenes();
-    renderChip();
-  }
-
-  function renameSceneById(id, name) {
-    presentation = renameScene(presentation, id, name);
-    persistPresentation();
-    renderScenes();
-    renderChip();
-  }
-
-  function updateSceneById(id) {
-    const { file, marks } = captureView();
-    const step = pinStep && stepper ? stepper.cursor : null;
-    presentation = updateScene(presentation, id, { file, marks, step });
-    persistPresentation();
-    if (id === activeSceneId) paintFile(activeFile);
-    renderScenes();
-  }
-
-  function loadSceneById(id) {
-    const scene = presentation.scenes.find((s) => s.id === id);
-    if (scene) setSelection(new Set(scene.marks));
-  }
-
-  function removeSceneById(id) {
-    presentation = removeScene(presentation, id);
-    persistPresentation();
-    if (activeSceneId === id) activateScene(null);
-    else renderScenes();
-  }
-
-  // Raw activation setter: paints scene.marks as a strong override (or clears the override
-  // for id === null), opens scene.file, and goes to scene.step through the stepper's own
-  // goto path. Does NOT touch `selection`. Mutually exclusive with solo.
-  function activateScene(id) {
-    const scene = id ? presentation.scenes.find((s) => s.id === id) : null;
-    activeSceneId = scene ? scene.id : null;
-    if (scene) rail.setSoloNode(null);
-
-    const nextFile = scene?.file && project.files.includes(scene.file) ? scene.file : activeFile;
-    if (nextFile !== activeFile) {
-      activeFile = nextFile;
-      rail.openFile(activeFile);
-      editor.openFile(activeFile, sources[activeFile]);
-      renderTabs();
-    }
-    paintFile(activeFile);
-    renderRail();
-    renderChip();
-    renderScenes();
-    if (scene && scene.step !== null && stepper) gotoStepper(scene.step);
-    syncURL();
-  }
-
-  function toggleScene(id) {
-    activateScene(activeSceneId === id ? null : id);
-  }
-
-  function importPresentationFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const json = JSON.parse(String(reader.result));
-        const { presentation: parsed, dropped } = parsePresentation(json, doc);
-        presentation = parsed;
-        if (activeSceneId && !parsed.scenes.some((s) => s.id === activeSceneId)) activeSceneId = null;
-        persistPresentation();
-        scenesMessage = { type: "info", text: `imported ${parsed.scenes.length} scenes, dropped ${dropped} unknown marks` };
-      } catch (err) {
-        scenesMessage = { type: "error", text: err.message };
-      }
-      paintFile(activeFile);
-      renderRail();
-      renderChip();
-      renderScenes();
-      syncURL();
-    };
-    reader.readAsText(file);
-  }
-
-  const scenesPanel = createScenesPanel(layout.scenesEl, {
-    onAddFromView: () => addSceneFromView(defaultSceneName()),
-    onTogglePinStep: (on) => {
-      pinStep = on;
-    },
-    onActivate: toggleScene,
-    onRename: renameSceneById,
-    onDuplicate: duplicateSceneById,
-    onUpdate: updateSceneById,
-    onLoad: loadSceneById,
-    onRemove: removeSceneById,
-    onMove: moveSceneById,
-    onImportFile: importPresentationFile,
-  });
-
-  function renderScenes() {
-    scenesPanel.render({ presentation, activeId: activeSceneId, message: scenesMessage, pinStep });
   }
 
   function selectSymbol(symbol) {
@@ -643,122 +440,130 @@ function boot(
     selectSymbol(null);
   }
 
-  function renderStepper() {
-    if (!stepper) return;
-    const locals = stepper.localsAt();
-    const changed = lastStepperLocals ? diffLocals(lastStepperLocals, locals) : new Set();
-    lastStepperLocals = locals;
-    renderStepperPanel(layout.stepperEl, {
-      stepper,
-      changed,
-      onAction: runStepperAction,
-      onSlide: gotoStepper,
-      onFrameJump: (frame) => jumpToRef({ file: frame.file, start: frame.start, end: frame.end }),
-    });
-  }
-
-  // Stepping never pushes jump history (only explicit jumps, e.g. a stack-frame click, do).
-  function syncStepperToEditor() {
-    const event = stepper.current();
-    if (event.file !== activeFile) {
-      openFile(event.file);
-    } else {
-      paintStepper();
-      syncURL();
-    }
-    editor.scrollIntoView(offsets[event.file].byteToChar(event.start));
-  }
-
-  function stepAction(fn) {
-    stepperActive = true;
-    fn();
-    renderStepper();
-    syncStepperToEditor();
-  }
-
-  function gotoStepper(i) {
-    stepAction(() => stepper.goto(i));
-  }
-
-  function runStepperAction(id) {
-    stepAction(() => {
-      if (id === "first") stepper.goto(0);
-      else if (id === "last") stepper.goto(stepper.length - 1);
-      else stepper[id]();
-    });
-  }
-
   function isBlockingFocus() {
     const el = document.activeElement;
     if (!el || el.classList?.contains("step-slider")) return false;
     return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
   }
 
-  layout.focusToggleEl.addEventListener("change", () => setFocus(layout.focusToggleEl.checked));
-  layout.railResetEl.addEventListener("click", (event) => {
-    event.preventDefault();
-    resetSelection();
-  });
+  const stepper = traceStepper
+    ? createStepperController(
+        traceStepper,
+        {
+          editor,
+          offsets,
+          stepperPanelEl: layout.stepperEl,
+          jumpToRef,
+          openFile,
+          getActiveFile: () => activeFile,
+          syncURL,
+        },
+        { initialActive: stepperPrimed },
+      )
+    : null;
 
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      activateScene(null);
-      clearSelection();
-      setSolo(null);
-      return;
-    } else if (event.altKey && event.key === "ArrowLeft") {
+  const scenes = createScenesController(
+    presentation,
+    {
+      doc,
+      project,
+      storageKey,
+      getActiveFile: () => activeFile,
+      openFileSilent,
+      paintFile,
+      renderRail,
+      renderChip,
+      syncURL,
+      setSelection,
+      rail: {
+        get selection() {
+          return rail.selection;
+        },
+        get solo() {
+          return rail.solo;
+        },
+        setSoloNode: (node) => rail.setSoloNode(node),
+      },
+      stepper: stepper && { get cursor() { return traceStepper.cursor; }, goto: (i) => stepper.goto(i) },
+      scenesPanelEl: layout.scenesEl,
+    },
+    { initialActiveSceneId },
+  );
+
+  layout.focusToggleEl.addEventListener("change", () => setFocus(layout.focusToggleEl.checked), { signal });
+  layout.railResetEl.addEventListener(
+    "click",
+    (event) => {
       event.preventDefault();
-      nav.back();
-      return;
-    } else if (event.altKey && event.key === "ArrowRight") {
-      event.preventDefault();
-      nav.forward();
-      return;
-    }
+      resetSelection();
+    },
+    { signal },
+  );
+  layout.backBtn.addEventListener("click", () => nav.back(), { signal });
+  layout.forwardBtn.addEventListener("click", () => nav.forward(), { signal });
 
-    if (isBlockingFocus()) return;
+  wireAppKeys(
+    {
+      nav,
+      scenes,
+      stepper,
+      rail: {
+        get focus() {
+          return rail.focus;
+        },
+      },
+      setFocus,
+      setSolo,
+      soloCycle,
+      clearSelection,
+    },
+    { signal },
+  );
 
-    if (event.key === "]") {
-      if (presentation.scenes.length > 0) activateScene(cycleScene(presentation, activeSceneId, 1));
-      else soloCycle(1);
-      return;
-    }
-    if (event.key === "[") {
-      if (presentation.scenes.length > 0) activateScene(cycleScene(presentation, activeSceneId, -1));
-      else soloCycle(-1);
-      return;
-    }
-    if (event.key === "f") {
-      setFocus(!rail.focus);
-      return;
-    }
-    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && activeSceneId) {
-      event.preventDefault();
-      const idx = presentation.scenes.findIndex((s) => s.id === activeSceneId);
-      moveSceneById(activeSceneId, idx + (event.key === "ArrowDown" ? 1 : -1));
-      return;
-    }
+  function currentUi() {
+    const activeIdx = scenes.activeSceneId ? scenes.presentation.scenes.findIndex((s) => s.id === scenes.activeSceneId) : -1;
+    return {
+      file: activeFile,
+      solo: rail.solo ? rail.solo.id : null,
+      focus: rail.focus,
+      scene: activeIdx !== -1 ? activeIdx + 1 : null,
+      i: stepper && stepper.active ? traceStepper.cursor : null,
+      railWidth: resizeHandles.getRailWidth(),
+    };
+  }
 
-    if (!stepper) return;
-    const action = STEP_KEYS[event.key];
-    if (!action) return;
-    event.preventDefault();
-    runStepperAction(action);
-  });
+  function buildCurrentBundle() {
+    return assembleBundle({
+      project,
+      sources,
+      doc,
+      presentation: scenes.presentation,
+      selection: [...rail.selection],
+      ui: currentUi(),
+    });
+  }
 
-  layout.backBtn.addEventListener("click", () => nav.back());
-  layout.forwardBtn.addEventListener("click", () => nav.forward());
+  const toolbar = wireToolbar(
+    {
+      layout,
+      projectName: project.name,
+      buildExportBundle: buildCurrentBundle,
+      onImportBundle: (importedBundle) => opts.remount?.(importedBundle, {}),
+      onOpenDialog: () => opts.openDialog?.open(),
+    },
+    { signal },
+  );
 
   renderRail();
   openFile(activeFile);
   selectSymbol(null);
   renderChip();
-  renderScenes();
+  scenes.render();
 
   if (stepper) {
     layout.stepperSectionEl.hidden = false;
-    renderStepper();
-    if (stepperActive) editor.scrollIntoView(offsets[activeFile].byteToChar(stepper.current().start));
+    stepper.render();
+    if (stepper.active) editor.scrollIntoView(offsets[activeFile].byteToChar(traceStepper.current().start));
   }
 
   window.__layers = {
@@ -809,63 +614,84 @@ function boot(
     forward: () => nav.forward(),
     stepper: stepper && {
       get cursor() {
-        return stepper.cursor;
+        return traceStepper.cursor;
       },
-      goto: gotoStepper,
-      next: () => runStepperAction("next"),
-      prev: () => runStepperAction("prev"),
-      stepOver: () => runStepperAction("stepOver"),
-      stepBackOver: () => runStepperAction("stepBackOver"),
-      stepOut: () => runStepperAction("stepOut"),
+      goto: (i) => stepper.goto(i),
+      next: () => stepper.runAction("next"),
+      prev: () => stepper.runAction("prev"),
+      stepOver: () => stepper.runAction("stepOver"),
+      stepBackOver: () => stepper.runAction("stepBackOver"),
+      stepOut: () => stepper.runAction("stepOut"),
     },
     scenes: {
-      list: () => presentation.scenes.map((s) => ({ ...s, marks: [...s.marks] })),
-      addFromView: (name, opts) => addSceneFromView(name, opts),
-      activate: (idOrNull) => activateScene(idOrNull),
-      duplicate: (id) => duplicateSceneById(id),
-      move: (id, toIndex) => moveSceneById(id, toIndex),
-      rename: (id, name) => renameSceneById(id, name),
-      update: (id) => updateSceneById(id),
-      load: (id) => loadSceneById(id),
-      remove: (id) => removeSceneById(id),
+      list: () => scenes.presentation.scenes.map((s) => ({ ...s, marks: [...s.marks] })),
+      addFromView: (name, sceneOpts) => scenes.addFromView(name, sceneOpts),
+      activate: (idOrNull) => scenes.activate(idOrNull),
+      duplicate: (id) => scenes.duplicateById(id),
+      move: (id, toIndex) => scenes.moveById(id, toIndex),
+      rename: (id, name) => scenes.renameById(id, name),
+      update: (id) => scenes.updateById(id),
+      load: (id) => scenes.loadById(id),
+      remove: (id) => scenes.removeById(id),
       get activeId() {
-        return activeSceneId;
+        return scenes.activeSceneId;
       },
+    },
+    bundle: {
+      export: () => buildCurrentBundle(),
+      import: (json) => toolbar.importJson(json),
+    },
+  };
+
+  return {
+    unmount() {
+      controller.abort();
+      editor.destroy();
     },
   };
 }
 
+async function loadBundleForProjectDir(projectDir) {
+  const result = await loadProject(projectDir);
+  if (!result.ok) return result;
+  const storageKey = bundleKey({ project: result.project, doc: result.doc });
+  const presentation = await loadInitialPresentation(storageKey, projectDir, result.doc);
+  const bundle = assembleBundle({ project: result.project, sources: result.sources, doc: result.doc, presentation });
+  return { ok: true, bundle };
+}
+
 async function main() {
   const app = document.getElementById("app");
-  const params = new URLSearchParams(location.search);
-  const projectDir = params.get("project") || DEFAULT_PROJECT;
+  const params = parseAppParams(location.search);
+  const projectDir = params.project || DEFAULT_PROJECT;
 
-  let result;
+  let loaded;
   try {
-    result = await loadProject(projectDir);
+    loaded = await loadBundleForProjectDir(projectDir);
   } catch (err) {
     renderError(app, [{ path: "", message: err.message }]);
     return;
   }
-
-  if (!result.ok) {
-    renderError(app, result.errors);
+  if (!loaded.ok) {
+    renderError(app, loaded.errors);
     return;
   }
 
-  const presentation = await loadInitialPresentation(projectDir, result.doc);
+  let currentApp = null;
+  function remount(bundle, opts = {}) {
+    currentApp?.unmount();
+    currentApp = mountApp(app, bundle, { ...opts, openDialog, remount });
+  }
+  const openDialog = createOpenDialog((bundle) => remount(bundle, {}));
 
-  boot(
-    app,
+  remount(loaded.bundle, {
     projectDir,
-    result,
-    params.get("file"),
-    params.get("i"),
-    params.get("solo"),
-    params.get("focus"),
-    presentation,
-    params.get("scene"),
-  );
+    requestedFile: params.file,
+    requestedI: params.i,
+    requestedSolo: params.solo,
+    requestedFocus: params.focus,
+    requestedScene: params.scene,
+  });
 }
 
 main();
