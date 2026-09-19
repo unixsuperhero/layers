@@ -66,8 +66,27 @@ function addMark(layerId, kind, mark) {
   byLayer.get(layerId).marks.push({ ...mark, data: { ...mark.data, scope: scopeOf(mark.file, mark.start) } });
 }
 
-for (const [layer, file, line, text, symbol, role, nth] of spec.marks) {
-  addMark(layer, "static", { file, ...locate(file, line, text, nth), symbol, role, data: {} });
+// A mark tuple is [layer, file, line, text, symbol, role, nth?, data?] — nth and data are
+// both optional and independently omittable: a trailing plain object is always `data`
+// (never `nth`), so `[..., role, {kind: "io"}]` and `[..., role, 2, {kind: "io"}]` both work.
+for (const tuple of spec.marks) {
+  let [layer, file, line, text, symbol, role, nth] = tuple;
+  let data = {};
+  const last = tuple[tuple.length - 1];
+  if (last !== null && typeof last === "object" && !Array.isArray(last)) {
+    data = last;
+    nth = typeof tuple[tuple.length - 2] === "number" ? tuple[tuple.length - 2] : undefined;
+  }
+  addMark(layer, "static", { file, ...locate(file, line, text, nth), symbol, role, data });
+}
+
+// Per-method verdicts (docs/ROUND-4.md "Verdicts"): spec.effects = { "<method symbol>": {
+// verdict, direct, via } }, merged into the matching defs.methods mark's data.effects.
+for (const [symbol, effects] of Object.entries(spec.effects ?? {})) {
+  const methodsLayer = byLayer.get("defs.methods");
+  const marks = (methodsLayer?.marks ?? []).filter((m) => m.symbol === symbol);
+  if (marks.length === 0) throw new Error(`effects: no defs.methods mark for symbol ${symbol}`);
+  for (const m of marks) m.data.effects = effects;
 }
 
 const trace = spec.trace.map(([event, file, line, depth, extra], i) => ({

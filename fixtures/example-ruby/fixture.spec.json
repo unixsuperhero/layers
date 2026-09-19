@@ -46,16 +46,29 @@
     ["vars.temps",      "mailer.rb",  5,  "body",       "Mailer#notify/body",      "write"],
     ["vars.temps",      "mailer.rb",  6,  "body",       "Mailer#notify/body",      "read"],
 
-    ["refs.constants",  "main.rb",    4,  "Invoice",    "Invoice",                 "reference"],
-    ["refs.constants",  "main.rb",    5,  "Mailer",     "Mailer",                  "reference"],
+    ["refs.constants",  "main.rb",    4,  "Invoice",    "Invoice",                 "reference", 1, {"resolved": true}],
+    ["refs.constants",  "main.rb",    5,  "Mailer",     "Mailer",                  "reference", 1, {"resolved": true}],
 
     ["refs.calls",      "main.rb",    4,  "new",        "Invoice#initialize",      "reference"],
     ["refs.calls",      "main.rb",    5,  "notify",     "Mailer#notify",           "reference"],
     ["refs.calls",      "mailer.rb",  5,  "summary",    "Invoice#summary",         "reference"],
     ["refs.calls",      "mailer.rb",  6,  "deliver",    "Mailer#deliver",          "reference"],
     ["refs.calls",      "invoice.rb", 19, "summary",    "Invoice#summary",         "reference"],
-    ["refs.calls",      "invoice.rb", 11, "items",      "Invoice#items",           "reference"]
+    ["refs.calls",      "invoice.rb", 11, "items",      "Invoice#items",           "reference"],
+
+    ["effects.state",   "invoice.rb", 6,  "@items",     "Invoice@items",           "write",     1, {"kind": "state"}],
+    ["effects.io",      "mailer.rb",  10, "puts",       null,                      "reference", 1, {"kind": "io", "what": "output"}],
+    ["effects.calls",   "mailer.rb",  6,  "deliver",    "Mailer#deliver",          "reference", 1, {"kind": "calls", "via": "Mailer#deliver", "effects": ["io"]}],
+    ["effects.calls",   "main.rb",    5,  "notify",     "Mailer#notify",           "reference", 1, {"kind": "calls", "via": "Mailer#notify", "effects": ["io"]}]
   ],
+  "effectsComment": "effects: { <defs.methods symbol>: { verdict, direct, via } } merged into that method's defs.methods mark's data.effects (docs/ROUND-4.md Verdicts)",
+  "effects": {
+    "Invoice#initialize": { "verdict": "impure", "direct": ["state"], "via": {} },
+    "Invoice#summary":    { "verdict": "pure",   "direct": [],        "via": {} },
+    "Invoice#overdue?":   { "verdict": "pure",   "direct": [],        "via": {} },
+    "Mailer#notify":      { "verdict": "impure", "direct": [],        "via": { "io": ["Mailer#deliver"] } },
+    "Mailer#deliver":     { "verdict": "impure", "direct": ["io"],    "via": {} }
+  },
   "traceComment": "trace: [event, file, line, depth, extra] — span is the trimmed line; an exec.path layer is derived from the unique trace spans",
   "trace": [
     ["line",     "main.rb",    4,  0, { "locals": {} }],

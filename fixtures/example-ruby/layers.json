@@ -71,7 +71,14 @@
           "symbol": "Invoice#initialize",
           "role": "definition",
           "data": {
-            "scope": "Invoice#initialize"
+            "scope": "Invoice#initialize",
+            "effects": {
+              "verdict": "impure",
+              "direct": [
+                "state"
+              ],
+              "via": {}
+            }
           }
         },
         {
@@ -81,7 +88,12 @@
           "symbol": "Invoice#summary",
           "role": "definition",
           "data": {
-            "scope": "Invoice#summary"
+            "scope": "Invoice#summary",
+            "effects": {
+              "verdict": "pure",
+              "direct": [],
+              "via": {}
+            }
           }
         },
         {
@@ -91,7 +103,12 @@
           "symbol": "Invoice#overdue?",
           "role": "definition",
           "data": {
-            "scope": "Invoice#overdue?"
+            "scope": "Invoice#overdue?",
+            "effects": {
+              "verdict": "pure",
+              "direct": [],
+              "via": {}
+            }
           }
         },
         {
@@ -101,7 +118,16 @@
           "symbol": "Mailer#notify",
           "role": "definition",
           "data": {
-            "scope": "Mailer#notify"
+            "scope": "Mailer#notify",
+            "effects": {
+              "verdict": "impure",
+              "direct": [],
+              "via": {
+                "io": [
+                  "Mailer#deliver"
+                ]
+              }
+            }
           }
         },
         {
@@ -111,7 +137,88 @@
           "symbol": "Mailer#deliver",
           "role": "definition",
           "data": {
+            "scope": "Mailer#deliver",
+            "effects": {
+              "verdict": "impure",
+              "direct": [
+                "io"
+              ],
+              "via": {}
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "effects.calls",
+      "kind": "static",
+      "producer": "fixture@1",
+      "marks": [
+        {
+          "file": "mailer.rb",
+          "start": 94,
+          "end": 101,
+          "symbol": "Mailer#deliver",
+          "role": "reference",
+          "data": {
+            "kind": "calls",
+            "via": "Mailer#deliver",
+            "effects": [
+              "io"
+            ],
+            "scope": "Mailer#notify"
+          }
+        },
+        {
+          "file": "main.rb",
+          "start": 97,
+          "end": 103,
+          "symbol": "Mailer#notify",
+          "role": "reference",
+          "data": {
+            "kind": "calls",
+            "via": "Mailer#notify",
+            "effects": [
+              "io"
+            ],
+            "scope": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "effects.io",
+      "kind": "static",
+      "producer": "fixture@1",
+      "marks": [
+        {
+          "file": "mailer.rb",
+          "start": 139,
+          "end": 143,
+          "symbol": null,
+          "role": "reference",
+          "data": {
+            "kind": "io",
+            "what": "output",
             "scope": "Mailer#deliver"
+          }
+        }
+      ]
+    },
+    {
+      "id": "effects.state",
+      "kind": "static",
+      "producer": "fixture@1",
+      "marks": [
+        {
+          "file": "invoice.rb",
+          "start": 119,
+          "end": 125,
+          "symbol": "Invoice@items",
+          "role": "write",
+          "data": {
+            "kind": "state",
+            "scope": "Invoice#initialize"
           }
         }
       ]
@@ -402,6 +509,7 @@
           "symbol": "Invoice",
           "role": "reference",
           "data": {
+            "resolved": true,
             "scope": null
           }
         },
@@ -412,6 +520,7 @@
           "symbol": "Mailer",
           "role": "reference",
           "data": {
+            "resolved": true,
             "scope": null
           }
         }

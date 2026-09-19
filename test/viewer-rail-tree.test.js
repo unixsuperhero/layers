@@ -19,7 +19,7 @@ test("All Files subtree equals today's grouping: one namespace node per namespac
   const all = byId(tree, "all");
   assert.equal(all.label, "ALL FILES");
   const namespaces = all.children.map((c) => c.label);
-  assert.deepEqual(namespaces, ["defs.*", "exec.*", "refs.*", "vars.*"]);
+  assert.deepEqual(namespaces, ["defs.*", "effects.*", "exec.*", "refs.*", "vars.*"]);
 
   const varsGroup = all.children.find((c) => c.label === "vars.*");
   assert.deepEqual(
