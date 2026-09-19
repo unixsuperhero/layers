@@ -74,8 +74,13 @@ When `exec.path` is enabled, lines in the file with **no** executed mark are dim
 (opacity) — "not executed" must be visible, not just absent.
 
 Layer panel: checkbox per layer, grouped by namespace with a group toggle, mark count
-beside each. Toggling re-computes decorations for that editor only (a CodeMirror
-`Compartment` or a `StateEffect` → `StateField`; don't rebuild the editor).
+beside each, plus a caret to expand into per-item/per-mark selection — see
+[docs/SELECTION-AND-SCENES.md](SELECTION-AND-SCENES.md) Part A for the full tree, tri-state
+checkbox and persistence behaviour. Toggling re-computes decorations for that editor only (a
+CodeMirror `Compartment` or a `StateEffect` → `StateField`; don't rebuild the editor).
+Deviations from that spec: the left column is 260px (not ~220px) and nested rows get a
+bordered `.layer-items`/`.item-marks` wrapper (a vertical guide line per level) instead of
+flat indentation — both just to keep symbol names legible at this column width.
 
 ## Solo mode
 
