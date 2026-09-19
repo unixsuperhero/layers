@@ -365,6 +365,152 @@ try {
   const jumpedAllOff = await page.evaluate(() => window.__layers.state.activeFile);
   check("cmd/ctrl-click jumps with every layer off", jumpedAllOff === "mailer.rb");
 
+  // --- Item selection (layer tree: expand, tick/untick items & marks, jump, persistence) ---
+
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function itemRow(layerId, label) {
+    return page.locator(`.layer-row[data-layer-id="${layerId}"] + .layer-items .item-row`, {
+      has: page.locator(".item-label", { hasText: new RegExp(`^${esc(label)}$`) }),
+    });
+  }
+
+  // clean slate: earlier tests left every layer off and localStorage populated
+  await page.evaluate(() => window.__layers.resetSelection());
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+
+  // expanding defs.methods (real click on its caret) lists exactly 5 items, right labels
+  await page.locator('.layer-row[data-layer-id="defs.methods"] .tree-caret').click();
+  const defsLabels = await page.locator('.layer-row[data-layer-id="defs.methods"] + .layer-items .item-label').allTextContents();
+  check(
+    "expanding defs.methods lists exactly 5 items with the right labels",
+    JSON.stringify(defsLabels) ===
+      JSON.stringify(["Invoice#initialize", "Invoice#summary", "Invoice#overdue?", "Mailer#notify", "Mailer#deliver"]),
+  );
+
+  // unticking Invoice#summary (real click) removes its paint, leaves initialize painted,
+  // makes the layer checkbox indeterminate, and the count reads "4/5"
+  await itemRow("defs.methods", "Invoice#summary").locator("input[type=checkbox]").click();
+  const afterUntickSummary = await page.evaluate(() => {
+    const spans = [...document.querySelectorAll(".lyr-defs-methods")];
+    return {
+      summary: spans.some((el) => el.textContent === "summary"),
+      initialize: spans.some((el) => el.textContent === "initialize"),
+    };
+  });
+  check("unticking Invoice#summary removes its paint from line 9", afterUntickSummary.summary === false);
+  check("unticking Invoice#summary leaves initialize painted on line 5", afterUntickSummary.initialize === true);
+  const defsCbAfterUntick = await page
+    .locator('.layer-row[data-layer-id="defs.methods"] input[type=checkbox]')
+    .evaluate((el) => el.indeterminate);
+  check("defs.methods checkbox is indeterminate after unticking one item", defsCbAfterUntick === true);
+  const defsCount4of5 = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check('defs.methods count reads "4/5"', defsCount4of5 === "4/5");
+
+  // ticking 2 more off gives "2/5"
+  await itemRow("defs.methods", "Invoice#overdue?").locator("input[type=checkbox]").click();
+  await itemRow("defs.methods", "Mailer#notify").locator("input[type=checkbox]").click();
+  const defsCount2of5 = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check('unticking 2 more items gives "2/5"', defsCount2of5 === "2/5");
+
+  // clicking the layer checkbox from indeterminate turns everything on: a real click on a
+  // native checkbox always flips its (unchecked) `checked` property to true, regardless of
+  // `indeterminate` — so the rule here is "indeterminate -> all on", never "-> all off"
+  await page.locator('.layer-row[data-layer-id="defs.methods"] input[type=checkbox]').click();
+  const defsCountAllOn = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check('clicking the indeterminate layer checkbox turns everything on ("5")', defsCountAllOn === "5");
+
+  // untick 2 (Invoice#summary, Mailer#deliver) to reach "3/5" for the screenshot below
+  await itemRow("defs.methods", "Invoice#summary").locator("input[type=checkbox]").click();
+  await itemRow("defs.methods", "Mailer#deliver").locator("input[type=checkbox]").click();
+  const defsCount3of5 = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check('defs.methods count reads "3/5"', defsCount3of5 === "3/5");
+
+  // vars.locals -> item Invoice#summary/item has a caret, expands to 2 marks (write, read)
+  await page.locator('.layer-row[data-layer-id="vars.locals"] .tree-caret').click();
+  await itemRow("vars.locals", "Invoice#summary/item").locator(".tree-caret").click();
+  const itemMarkLabels = await page
+    .locator('.layer-row[data-layer-id="vars.locals"] + .layer-items .item-marks .mark-label')
+    .allTextContents();
+  check(
+    "vars.locals: Invoice#summary/item expands to 2 marks, write then read",
+    itemMarkLabels.length === 2 && itemMarkLabels[0].startsWith("write") && itemMarkLabels[1].startsWith("read"),
+  );
+
+  await page.screenshot({ path: join(OUT_DIR, "item-selection.png") });
+
+  // unticking only the read mark (real click) removes paint from "item" on line 12, not line 11
+  const varsMarkRows = page.locator('.layer-row[data-layer-id="vars.locals"] + .layer-items .item-marks .mark-row');
+  await varsMarkRows.filter({ hasText: "read" }).locator("input[type=checkbox]").click();
+  const itemPaint = await page.evaluate(() => {
+    const lines = [...document.querySelectorAll(".cm-line")];
+    const hasItemAt = (n) => [...lines[n - 1].querySelectorAll(".lyr-vars-locals")].some((el) => el.textContent === "item");
+    return { line11: hasItemAt(11), line12: hasItemAt(12) };
+  });
+  check('unticking only the read mark removes paint from "item" on line 12', itemPaint.line12 === false);
+  check('unticking only the read mark leaves "item" painted on line 11', itemPaint.line11 === true);
+
+  // clicking an item LABEL for Mailer#notify jumps to mailer.rb; back() returns
+  await itemRow("defs.methods", "Mailer#notify").locator(".item-label").click();
+  const jumpedToMailer = await page.evaluate(() => window.__layers.state.activeFile);
+  check("clicking the Mailer#notify item label jumps to mailer.rb", jumpedToMailer === "mailer.rb");
+  await page.evaluate(() => window.__layers.back());
+  const backFromItemJump = await page.evaluate(() => window.__layers.state.activeFile);
+  check("back() returns from the item-label jump", backFromItemJump === "invoice.rb");
+
+  // solo of defs.methods with a partial selection paints only the selected ones; with zero
+  // selected it falls back to painting the whole layer
+  await page.evaluate(() => window.__layers.solo("defs.methods"));
+  const soloPartialTexts = await page.evaluate(() => [...document.querySelectorAll(".lyr-defs-methods")].map((el) => el.textContent));
+  check(
+    "solo of defs.methods with a partial selection paints only the selected ones",
+    soloPartialTexts.includes("initialize") && soloPartialTexts.includes("overdue?") && !soloPartialTexts.includes("summary"),
+  );
+  await page.evaluate(() => window.__layers.toggleLayer("defs.methods", false));
+  const soloZeroTexts = await page.evaluate(() => [...document.querySelectorAll(".lyr-defs-methods")].map((el) => el.textContent));
+  check(
+    "solo of defs.methods with zero selected falls back to painting all 5",
+    soloZeroTexts.includes("initialize") && soloZeroTexts.includes("summary") && soloZeroTexts.includes("overdue?"),
+  );
+  await page.evaluate(() => window.__layers.solo(null));
+
+  // a reload restores the partial selection and expanded carets
+  await page.evaluate(() => window.__layers.toggleLayer("defs.methods", true));
+  await itemRow("defs.methods", "Invoice#summary").locator("input[type=checkbox]").click();
+  const preReloadCount = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check('pre-reload defs.methods count is "4/5"', preReloadCount === "4/5");
+
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const postReloadCount = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check("reload restores the partial selection", postReloadCount === "4/5");
+  check(
+    "reload restores the expanded defs.methods caret",
+    (await page.locator('.layer-row[data-layer-id="defs.methods"] + .layer-items').count()) === 1,
+  );
+  check(
+    "reload restores the expanded vars.locals caret",
+    (await page.locator('.layer-row[data-layer-id="vars.locals"] + .layer-items').count()) === 1,
+  );
+  check(
+    "reload restores the expanded Invoice#summary/item caret",
+    (await page.locator('.layer-row[data-layer-id="vars.locals"] + .layer-items .item-marks .mark-row').count()) === 2,
+  );
+
+  // resetSelection() restores defaults
+  await page.evaluate(() => window.__layers.resetSelection());
+  const afterResetCount = await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-count').textContent();
+  check('resetSelection() restores the default selection ("5", not partial)', afterResetCount === "5");
+  check(
+    "resetSelection() also collapses expanded carets",
+    (await page.locator('.layer-row[data-layer-id="defs.methods"] + .layer-items').count()) === 0,
+  );
+
+  // an unselected token is still clickable (selects its symbol)
+  await page.evaluate(() => window.__layers.toggleLayer("defs.methods", false));
+  await clickText(18, "overdue?");
+  const unselectedTokenClickable = await page.evaluate(() => window.__layers.state.selectedSymbol);
+  check("an unselected token is still clickable (selects its symbol)", unselectedTokenClickable === "Invoice#overdue?");
+
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);
   if (consoleErrors.length) console.error("console errors:", consoleErrors);
