@@ -282,7 +282,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
           persist();
         },
         onToggleItemCaret: (layerId, symbol) => {
-          const key = `${layerId} ${symbol}`;
+          const key = `${layerId}\0${symbol}`;
           if (expandedItems.has(key)) expandedItems.delete(key);
           else expandedItems.add(key);
           renderLayers();
