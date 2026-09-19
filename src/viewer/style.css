@@ -281,6 +281,23 @@ h3 {
   cursor: pointer;
 }
 
+.item-label {
+  display: flex;
+  min-width: 0;
+}
+
+.item-prefix {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-dim);
+}
+
+.item-name {
+  flex: none;
+}
+
 .item-label:hover,
 .mark-label:hover {
   color: var(--accent);

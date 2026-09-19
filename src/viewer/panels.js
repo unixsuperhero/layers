@@ -151,7 +151,15 @@ function renderItemRow(layer, item, ctx, handlers) {
   const label = document.createElement("span");
   label.className = "item-label";
   const labelText = item.symbol ?? firstMark.role;
-  label.textContent = labelText;
+  // "Invoice#summary/total" → dim shrinkable prefix "Invoice#summary/" + the name "total", which never truncates
+  const cut = Math.max(labelText.lastIndexOf("#"), labelText.lastIndexOf("/")) + 1;
+  const prefix = document.createElement("span");
+  prefix.className = "item-prefix";
+  prefix.textContent = labelText.slice(0, cut);
+  const name = document.createElement("span");
+  name.className = "item-name";
+  name.textContent = labelText.slice(cut);
+  label.append(prefix, name);
   label.title = labelText;
   label.addEventListener("click", () => handlers.onJump(jumpTargetKey(item, marksByKey)));
 
