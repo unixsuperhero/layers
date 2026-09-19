@@ -440,11 +440,7 @@ function boot(
   }
 
   function captureView() {
-    return {
-      file: activeFile,
-      marks: currentPaintedKeys(),
-      step: pinStep && stepper ? stepper.cursor : null,
-    };
+    return { file: activeFile, marks: currentPaintedKeys() };
   }
 
   function defaultSceneName() {
