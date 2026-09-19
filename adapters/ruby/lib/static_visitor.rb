@@ -12,7 +12,9 @@ require_relative "scope_index"
 #   - raw_constants / raw_calls: unresolved occurrences, resolved in a second pass
 #                   once every file has been visited (see constant_resolver.rb / call_resolver.rb)
 class StaticVisitor < Prism::Visitor
-  Mark = Struct.new(:layer, :file, :start, :finish, :symbol, :role, :scope, keyword_init: true)
+  # `extra`: optional extra data.* fields beyond `scope` (round 4: data.effects, data.resolved).
+  # Defaults to nil (unset) for every existing call site -- doc_writer merges it in when present.
+  Mark = Struct.new(:layer, :file, :start, :finish, :symbol, :role, :scope, :extra, keyword_init: true)
   DefRecord = Struct.new(:owner, :name, :kind, :symbol, keyword_init: true) # kind: :instance | :singleton | :attr | :class
 
   RawConstant = Struct.new(:file, :start, :finish, :name, :nesting, :scope, keyword_init: true)
@@ -221,7 +223,71 @@ class StaticVisitor < Prism::Visitor
     )
   end
 
-  # ---- constants --------------------------------------------------------------
+  # ---- constants: definitions (defs.constants) -----------------------------------
+  #
+  # Every constant assignment gets a defs.constants mark, lexically qualified like a class
+  # (docs/ROUND-4.md "Constants"); registered as a DefRecord so refs.constants elsewhere in
+  # the project (and, with --all-constants, unresolved reads) can find it -- see
+  # constant_resolver.rb / project_index.rb. Whether it's ALSO an effects.global write
+  # (constant reassignment inside a method) is decided by lib/effects_visitor.rb, a separate
+  # pass -- this method only ever emits the definition mark.
+
+  def define_constant(full_name, loc)
+    symbol = Symbols.qualify(@nesting + [full_name])
+    @def_marks << Mark.new(layer: "defs.constants", file: @file, start: loc.start_offset,
+                            finish: loc.end_offset, symbol: symbol, role: "definition", scope: @method_symbol)
+    @def_records << DefRecord.new(owner: nil, name: symbol, kind: :constant, symbol: symbol)
+  end
+
+  def visit_constant_write_node(node)
+    define_constant(node.name.to_s, node.name_loc)
+    visit(node.value)
+  end
+
+  def visit_constant_operator_write_node(node)
+    define_constant(node.name.to_s, node.name_loc)
+    visit(node.value)
+  end
+
+  def visit_constant_and_write_node(node)
+    define_constant(node.name.to_s, node.name_loc)
+    visit(node.value)
+  end
+
+  def visit_constant_or_write_node(node)
+    define_constant(node.name.to_s, node.name_loc)
+    visit(node.value)
+  end
+
+  def visit_constant_target_node(node)
+    define_constant(node.name.to_s, node.location)
+  end
+
+  def visit_constant_path_write_node(node)
+    define_constant(constant_path_text(node.target), node.target.location)
+    visit(node.value)
+  end
+
+  def visit_constant_path_operator_write_node(node)
+    define_constant(constant_path_text(node.target), node.target.location)
+    visit(node.value)
+  end
+
+  def visit_constant_path_and_write_node(node)
+    define_constant(constant_path_text(node.target), node.target.location)
+    visit(node.value)
+  end
+
+  def visit_constant_path_or_write_node(node)
+    define_constant(constant_path_text(node.target), node.target.location)
+    visit(node.value)
+  end
+
+  def visit_constant_path_target_node(node)
+    define_constant(constant_path_text(node), node.location)
+  end
+
+  # ---- constants: reads (raw, resolved in a second pass by constant_resolver.rb) -----
 
   def visit_constant_read_node(node)
     @raw_constants << RawConstant.new(file: @file, start: node.location.start_offset,

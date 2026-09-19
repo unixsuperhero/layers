@@ -13,11 +13,19 @@ module DocWriter
     "defs.classes" => "static",
     "defs.methods" => "static",
     "defs.attributes" => "static",
+    "defs.constants" => "static",
     "vars.locals" => "static",
     "vars.ivars" => "static",
     "vars.temps" => "static",
     "refs.constants" => "static",
     "refs.calls" => "static",
+    "effects.state" => "static",
+    "effects.global" => "static",
+    "effects.args" => "static",
+    "effects.io" => "static",
+    "effects.control" => "static",
+    "effects.calls" => "static",
+    "effects.unknown" => "static",
     "exec.path" => "dynamic",
   }.freeze
 
@@ -54,8 +62,10 @@ module DocWriter
   end
 
   def mark_json(m)
+    data = { "scope" => m.scope }
+    data.merge!(m.extra) if m.extra
     { "file" => m.file, "start" => m.start, "end" => m.finish, "symbol" => m.symbol, "role" => m.role,
-      "data" => { "scope" => m.scope } }
+      "data" => data }
   end
 
   def trace_json(ev, i)
