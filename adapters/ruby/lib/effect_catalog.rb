@@ -89,6 +89,11 @@ module EffectCatalog
     each_slice each_cons chunk_while slice_when tally compact flatten uniq reverse rotate assoc
     to_str to_ary to_proc object_id class instance_of? methods public_methods to_set
     each_pair each_key each_value invert
+    delete_suffix delete_prefix transform_values transform_keys positive? negative? zero?
+    nonzero? finite? infinite? nan? integer? even? odd? succ pred ord chr center ljust rjust
+    casecmp casecmp? match match? scan unpack unpack1 bytesize bytes chars lines codepoints
+    to_c coerce divmod fdiv gcd lcm pow numerator denominator
+    private public protected module_function private_class_method public_class_method
   ].freeze
 
   module_function
