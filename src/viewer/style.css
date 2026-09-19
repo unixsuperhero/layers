@@ -304,10 +304,16 @@ h3 {
 /* --- solo (focus) mode: soloed marks get a strong, near-opaque style; everything else
    in the file is dimmed via .code-dim --- */
 
+/* CodeMirror nests a syntax-highlighting span (its own explicit colour) inside our mark,
+   which would otherwise beat a plain `color` here — so force it on both. */
+.lyr-solo,
+.lyr-solo * {
+  color: #10131a !important;
+}
+
 .lyr-solo {
   background-color: color-mix(in srgb, var(--lyr-bg) 88%, transparent);
   outline: 1px solid var(--lyr);
-  color: #10131a;
   font-weight: 700;
 }
 
