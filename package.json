@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Deterministic visual markup layers over source code",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "fixture": "node scripts/build-fixture.mjs fixtures/example-ruby",
     "validate": "node bin/layers-validate.mjs",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "dev": "vite",
     "build": "vite build",
     "smoke": "node scripts/smoke.mjs"
