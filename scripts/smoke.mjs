@@ -255,19 +255,21 @@ try {
   await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
   await page.waitForSelector(".file-tab");
 
-  // clicking a layer NAME in the panel solos it (real mouse click); clicking its checkbox does not
-  await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-id').click();
+  // clicking a layer NAME in the panel solos it (real mouse click); clicking its checkbox does
+  // not. Scoped to the ALL FILES accordion (data-node-id="all") — a layer id like
+  // "defs.methods" also appears inside the per-file accordion once it is expanded.
+  await page.locator('[data-node-id="all"] .layer-row[data-layer-id="defs.methods"] .layer-id').click();
   const soloAfterNameClick = await page.evaluate(() => window.__layers.state.solo);
-  check('clicking the "defs.methods" name in the panel solos it', soloAfterNameClick === "defs.methods");
+  check('clicking the "defs.methods" name in the panel solos it', soloAfterNameClick?.id === "all/defs.methods");
 
-  await page.locator('.layer-row[data-layer-id="vars.locals"] input[type=checkbox]').click();
+  await page.locator('[data-node-id="all"] .layer-row[data-layer-id="vars.locals"] input[type=checkbox]').click();
   const soloAfterCheckboxClick = await page.evaluate(() => window.__layers.state.solo);
-  check("clicking a layer checkbox does not change solo", soloAfterCheckboxClick === "defs.methods");
+  check("clicking a layer checkbox does not change solo", soloAfterCheckboxClick?.id === "all/defs.methods");
 
   await page.screenshot({ path: join(OUT_DIR, "solo-defs-methods.png") });
 
   // clicking the soloed layer's name again un-solos it
-  await page.locator('.layer-row[data-layer-id="defs.methods"] .layer-id').click();
+  await page.locator('[data-node-id="all"] .layer-row[data-layer-id="defs.methods"] .layer-id').click();
   const soloAfterUnsoloClick = await page.evaluate(() => window.__layers.state.solo);
   check("clicking the soloed layer name again un-solos it", soloAfterUnsoloClick === null);
 
@@ -294,7 +296,7 @@ try {
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.keyboard.press("]");
   const soloAfterBracket = await page.evaluate(() => window.__layers.state.solo);
-  check('real "]" key moves solo to the next layer id', soloAfterBracket === "vars.temps");
+  check('real "]" key moves solo to the next layer id', soloAfterBracket?.id === "vars.temps");
 
   await page.keyboard.press("Escape");
   const soloAfterEscape = await page.evaluate(() => window.__layers.state.solo);
@@ -310,7 +312,7 @@ try {
   await page.goto(`${base}/?project=fixtures/example-ruby&solo=vars.*`, { waitUntil: "networkidle" });
   await page.waitForSelector(".file-tab");
   const groupSoloState = await page.evaluate(() => window.__layers.state.solo);
-  check("reload with solo=vars.* restores group solo", groupSoloState === "vars.*");
+  check("reload with solo=vars.* restores group solo", groupSoloState?.id === "vars.*");
 
   const groupSoloStrong = await page.evaluate(() => {
     const spans = [...document.querySelectorAll(".lyr-solo")];
@@ -709,6 +711,164 @@ try {
   check("malformed JSON import shows an inline error message", errorMessage.length > 0 && !/imported/.test(errorMessage));
   const idsAfterBadImport = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
   check("malformed JSON import leaves the list intact", JSON.stringify(idsAfterBadImport) === JSON.stringify(idsBeforeBadImport));
+
+  // --- Rail v2: nested accordions, node solo, Focus, resize + hscroll ---
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
+  // three top-level accordions' worth of structure for invoice.rb
+  check("ALL FILES accordion present", (await page.locator('[data-node-id="all"]').count()) === 1);
+  const invoiceGroupLabels = await page
+    .locator('[data-node-id="file/invoice.rb"] > .rail-accordion-body > .rail-accordion > .rail-accordion-header .rail-accordion-name')
+    .allTextContents();
+  check(
+    "invoice.rb accordion has Whole file + initialize/summary/overdue? + top level",
+    JSON.stringify(invoiceGroupLabels) === JSON.stringify(["Whole file", "initialize", "summary", "overdue?", "(top level)"]),
+  );
+
+  // switching to mailer.rb swaps the file accordion to notify/deliver
+  await page.evaluate(() => window.__layers.openFile("mailer.rb"));
+  check("invoice.rb accordion is gone once mailer.rb is open", (await page.locator('[data-node-id="file/invoice.rb"]').count()) === 0);
+  const mailerGroupLabels = await page
+    .locator('[data-node-id="file/mailer.rb"] > .rail-accordion-body > .rail-accordion > .rail-accordion-header .rail-accordion-name')
+    .allTextContents();
+  check(
+    "mailer.rb accordion has Whole file + notify + deliver + top level",
+    JSON.stringify(mailerGroupLabels) === JSON.stringify(["Whole file", "notify", "deliver", "(top level)"]),
+  );
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+
+  // REAL click ticking OFF invoice.rb › summary › vars.temps removes paint from "label" on
+  // lines 14-15 only, makes All Files vars.temps indeterminate 2/4, leaves mailer.rb's body painted
+  await page.locator('[data-node-id="file/invoice.rb/scope/Invoice#summary"] > .rail-accordion-header .tree-caret').click();
+  await page.locator('.layer-row[data-node-id="file/invoice.rb/scope/Invoice#summary/vars.temps"] input[type=checkbox]').click();
+  const labelPaintAfterUntick = await page.evaluate(() => {
+    const lines = [...document.querySelectorAll(".cm-line")];
+    const hasLabelAt = (n) => [...lines[n - 1].querySelectorAll(".lyr-vars-temps")].some((el) => el.textContent === "label");
+    return { line14: hasLabelAt(14), line15: hasLabelAt(15) };
+  });
+  check("unticking summary's vars.temps removes paint from label on line 14", labelPaintAfterUntick.line14 === false);
+  check("unticking summary's vars.temps removes paint from label on line 15", labelPaintAfterUntick.line15 === false);
+  const allVarsTempsCount = await page.locator('[data-node-id="all"] .layer-row[data-layer-id="vars.temps"] .layer-count').textContent();
+  check('All Files vars.temps is now indeterminate "2/4"', allVarsTempsCount === "2/4");
+
+  await page.evaluate(() => window.__layers.openFile("mailer.rb"));
+  const mailerBodyStillPainted = await page.evaluate(() => [...document.querySelectorAll(".lyr-vars-temps")].some((el) => el.textContent === "body"));
+  check("mailer.rb body is still painted (vars.temps there is untouched)", mailerBodyStillPainted);
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+
+  await page.screenshot({ path: join(OUT_DIR, "rail-v2.png") });
+
+  // REAL click on the method name "summary" solos it
+  await page.locator('[data-node-id="file/invoice.rb/scope/Invoice#summary"] > .rail-accordion-header .rail-accordion-name').click();
+  const methodSolo = await page.evaluate(() => window.__layers.state.solo);
+  check('clicking method name "summary" sets solo id file/invoice.rb/scope/Invoice#summary', methodSolo?.id === "file/invoice.rb/scope/Invoice#summary");
+  const methodChipText = await page.locator("#solo-chip").textContent();
+  check("chip label mentions summary", /summary/.test(methodChipText));
+  const methodSoloLines = await page.evaluate(() => {
+    const lines = [...document.querySelectorAll(".cm-line")];
+    return [...document.querySelectorAll(".lyr-solo")].map((el) => lines.findIndex((l) => l.contains(el)) + 1);
+  });
+  check("only tokens on lines 9-16 carry lyr-solo", methodSoloLines.length > 0 && methodSoloLines.every((n) => n >= 9 && n <= 16));
+  const methodSoloUrl = await page.evaluate(() => location.search);
+  check("URL solo= carries the node-path id", new URLSearchParams(methodSoloUrl).get("solo") === "file/invoice.rb/scope/Invoice#summary");
+
+  // legacy solo("vars.locals") still works
+  await page.evaluate(() => window.__layers.solo("vars.locals"));
+  const legacySolo = await page.evaluate(() => window.__layers.state.solo);
+  check('legacy solo("vars.locals") still works', legacySolo?.id === "vars.locals" && legacySolo.keys.length > 0);
+  await page.evaluate(() => window.__layers.solo(null));
+
+  // --- Focus ---
+  // tick only summary's + initialize's vars.locals (everything else off)
+  const focusKeys = await page.evaluate(() => {
+    const doc = window.__layers.state.doc;
+    const keys = [];
+    for (const layer of doc.layers) {
+      if (layer.id !== "vars.locals") continue;
+      for (const m of layer.marks) {
+        if (m.file === "invoice.rb" && (m.data?.scope === "Invoice#summary" || m.data?.scope === "Invoice#initialize")) {
+          keys.push(`${layer.id}|${m.file}|${m.start}|${m.end}`);
+        }
+      }
+    }
+    return keys;
+  });
+  await page.evaluate(() => {
+    for (const id of Object.keys(window.__layers.state.layerState)) window.__layers.toggleLayer(id, false);
+  });
+  await page.evaluate((keys) => window.__layers.setMarks(keys, true), focusKeys);
+
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press("f");
+  const focusState = await page.evaluate(() => window.__layers.state.focus);
+  check("real key f sets state.focus === true", focusState === true);
+  const focusUrl = await page.evaluate(() => location.search);
+  check("URL has focus=1", new URLSearchParams(focusUrl).get("focus") === "1");
+  const focusPaint = await page.evaluate(() => ({
+    totalSolo: [...document.querySelectorAll(".lyr-solo")].some((el) => el.textContent === "total"),
+    someDimmed: document.querySelectorAll(".code-dim").length > 0,
+  }));
+  check('Focus: ticked "total" token carries lyr-solo', focusPaint.totalSolo);
+  check("Focus: the rest of the code carries code-dim", focusPaint.someDimmed);
+
+  await page.screenshot({ path: join(OUT_DIR, "rail-focus.png") });
+
+  await page.keyboard.press("f");
+  const focusOff = await page.evaluate(() => window.__layers.state.focus);
+  check("pressing f again turns focus off", focusOff === false);
+  check("no lyr-solo tokens once focus is off", (await page.locator(".lyr-solo").count()) === 0);
+
+  await page.keyboard.press("f"); // back on, for the reload check below
+  const summaryOpenBeforeReload = (await page.locator('[data-node-id="file/invoice.rb/scope/Invoice#summary"] > .rail-accordion-body').count()) === 1;
+  check("summary method group is expanded before reload", summaryOpenBeforeReload);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const focusAfterReload = await page.evaluate(() => window.__layers.state.focus);
+  check("reload restores focus", focusAfterReload === true);
+  const summaryOpenAfterReload = (await page.locator('[data-node-id="file/invoice.rb/scope/Invoice#summary"] > .rail-accordion-body').count()) === 1;
+  check("reload restores accordion open state", summaryOpenAfterReload === true);
+
+  // --- exec.path item labels show source text, not "executed" ---
+  await page.evaluate(() => window.__layers.solo(null));
+  await page.locator('[data-node-id="all"] .layer-row[data-layer-id="exec.path"] .tree-caret').click();
+  const execLabels = await page.locator('[data-node-id="all"] .layer-row[data-layer-id="exec.path"] + .layer-items .item-label').allTextContents();
+  check('exec.path item label shows source text "total = 0"', execLabels.includes("total = 0"));
+  check('exec.path item labels never show "executed"', !execLabels.includes("executed"));
+
+  // --- Resize: real mouse drag of the rail's right edge ---
+  const railBefore = await page.evaluate(() => document.getElementById("col-left").getBoundingClientRect().width);
+  const railHandleBox = await page.locator("#rail-resize").boundingBox();
+  await page.mouse.move(railHandleBox.x + railHandleBox.width / 2, railHandleBox.y + railHandleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(railHandleBox.x + railHandleBox.width / 2 + 120, railHandleBox.y + railHandleBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+  const railAfterDrag = await page.evaluate(() => document.getElementById("col-left").getBoundingClientRect().width);
+  check("dragging the rail edge by +120px changes its width by ~120px", Math.abs(railAfterDrag - railBefore - 120) <= 4);
+
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const railAfterReload = await page.evaluate(() => document.getElementById("col-left").getBoundingClientRect().width);
+  check("resized rail width persists across reload", Math.abs(railAfterReload - railAfterDrag) <= 2);
+
+  await page.locator("#rail-resize").dblclick();
+  const railAfterDblclick = await page.evaluate(() => document.getElementById("col-left").getBoundingClientRect().width);
+  check("double-click the resize handle resets the rail width", Math.abs(railAfterDblclick - 260) <= 2);
+
+  // --- Horizontal scroll instead of ellipsis ---
+  await page.evaluate(() => document.documentElement.style.setProperty("--rail-width", "200px"));
+  await page.locator('[data-node-id="all"] .layer-row[data-layer-id="vars.locals"] .tree-caret').click();
+  await page.evaluate(() => document.querySelector(".rail-panel").scrollTo(9999, 0));
+  const hscroll = await page.evaluate(() => {
+    const panel = document.querySelector(".rail-panel");
+    const name = document.querySelector(".item-name") ?? document.querySelector(".layer-id");
+    return { scrollWidth: panel.scrollWidth, clientWidth: panel.clientWidth, textOverflow: getComputedStyle(name).textOverflow };
+  });
+  check("rail panel scrolls horizontally instead of ellipsis (scrollWidth > clientWidth)", hscroll.scrollWidth > hscroll.clientWidth);
+  check("row label text-overflow is not ellipsis", hscroll.textOverflow !== "ellipsis");
+
+  await page.screenshot({ path: join(OUT_DIR, "rail-wide.png") });
 
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);

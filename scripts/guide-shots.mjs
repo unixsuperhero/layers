@@ -65,7 +65,7 @@ try {
   await shoot("01-overview", [
     { n: 1, target: page.locator(".nav-toolbar"), place: "right" },
     { n: 2, target: page.locator("#file-list"), place: "right" },
-    { n: 3, target: page.locator("#layer-panel"), place: "right" },
+    { n: 3, target: page.locator("#rail-panel"), place: "right" },
     { n: 4, target: page.locator("#file-tabs .file-tab").nth(1), place: "bottom" },
     { n: 5, target: page.locator(".cm-content"), place: "top", pad: -6 },
     { n: 6, target: page.locator("#symbol-panel"), place: "left" },
@@ -77,7 +77,7 @@ try {
   await shoot("02-layers", [
     { n: 1, target: layerRow("defs.methods").locator("input[type=checkbox]"), place: "left" },
     { n: 2, target: layerRow("defs.methods").locator(".layer-id"), place: "right" },
-    { n: 3, target: page.locator(".layer-group-header").first(), place: "right" },
+    { n: 3, target: page.locator(".rail-accordion-header.level-namespace").first(), place: "right" },
     { n: 4, target: layerRow("vars.locals").locator(".layer-count"), place: "right" },
     { n: 5, target: line(9).locator(".lyr-defs-methods"), place: "right" },
     { n: 6, target: line(10).locator(".lyr-vars-locals"), place: "right" },
