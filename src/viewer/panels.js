@@ -19,8 +19,18 @@ export function buildLayout(app) {
         <div class="editor-host" id="editor-host"></div>
       </div>
       <div class="col col-right">
-        <div class="symbol-panel" id="symbol-panel"></div>
-        <section id="stepper-panel" class="stepper-panel" hidden></section>
+        <section class="right-section" data-section="scenes">
+          <div class="right-section-header"><h2>Scenes</h2></div>
+          <div class="right-section-body scenes-panel" id="scenes-panel"></div>
+        </section>
+        <section class="right-section" data-section="symbol">
+          <div class="right-section-header"><h2>Symbol</h2></div>
+          <div class="right-section-body symbol-panel" id="symbol-panel"></div>
+        </section>
+        <section class="right-section" data-section="stepper" id="stepper-section" hidden>
+          <div class="right-section-header"><h2>Stepper</h2></div>
+          <div class="right-section-body stepper-panel" id="stepper-panel"></div>
+        </section>
       </div>
     </div>
   `;
@@ -30,11 +40,41 @@ export function buildLayout(app) {
     fileTabsEl: app.querySelector("#file-tabs"),
     editorEl: app.querySelector("#editor-host"),
     soloChipEl: app.querySelector("#solo-chip"),
+    scenesEl: app.querySelector("#scenes-panel"),
     symbolEl: app.querySelector("#symbol-panel"),
     stepperEl: app.querySelector("#stepper-panel"),
+    stepperSectionEl: app.querySelector("#stepper-section"),
     backBtn: app.querySelector("#nav-back"),
     forwardBtn: app.querySelector("#nav-forward"),
   };
+}
+
+// Makes each right-column section's heading toggle its body, remembering collapsed state.
+export function wireRightSections(app, projectDir) {
+  const key = `layers:${projectDir}:rightCollapsed`;
+  let collapsed;
+  try {
+    collapsed = new Set(JSON.parse(localStorage.getItem(key) ?? "[]"));
+  } catch {
+    collapsed = new Set();
+  }
+  const persist = () => {
+    try {
+      localStorage.setItem(key, JSON.stringify([...collapsed]));
+    } catch {
+      // ignore
+    }
+  };
+  for (const section of app.querySelectorAll(".right-section")) {
+    const name = section.dataset.section;
+    if (collapsed.has(name)) section.classList.add("collapsed");
+    section.querySelector(".right-section-header").addEventListener("click", () => {
+      section.classList.toggle("collapsed");
+      if (section.classList.contains("collapsed")) collapsed.add(name);
+      else collapsed.delete(name);
+      persist();
+    });
+  }
 }
 
 export function renderFileList(container, files, activeFile, onSelect) {
@@ -327,9 +367,6 @@ const STEP_BUTTONS = [
 
 export function renderStepperPanel(container, { stepper, changed, onAction, onSlide, onFrameJump }) {
   container.innerHTML = "";
-  const h = document.createElement("h2");
-  h.textContent = "Stepper";
-  container.appendChild(h);
 
   const controls = document.createElement("div");
   controls.className = "stepper-controls";
@@ -422,9 +459,6 @@ const ROLE_LABELS = [
 
 export function renderSymbolPanel(container, { symbol, entry, sources, offsets }, onJump) {
   container.innerHTML = "";
-  const h = document.createElement("h2");
-  h.textContent = "Symbol";
-  container.appendChild(h);
 
   if (!symbol || !entry) {
     const empty = document.createElement("p");

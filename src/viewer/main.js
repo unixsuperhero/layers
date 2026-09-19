@@ -6,10 +6,13 @@ import { marksAtPosition, innermostSymbol } from "./marks-at.js";
 import { diffLocals } from "./locals-diff.js";
 import { layersForSolo, cycleSolo } from "./solo.js";
 import { markKey, defaultSelection, setKeys, pruneSelection } from "./selection.js";
+import { addScene, duplicateScene, moveScene, renameScene, updateScene, removeScene, cycleScene, parsePresentation } from "./scenes.js";
+import { createScenesPanel } from "./scenes-panel.js";
 import { flatten } from "../core/flatten.js";
 import { createStepper } from "../core/stepper.js";
 import {
   buildLayout,
+  wireRightSections,
   renderFileList,
   renderFileTabs,
   renderLayerPanel,
@@ -21,6 +24,7 @@ import {
 const DEFAULT_PROJECT = "fixtures/example-ruby";
 
 const storageKey = (projectDir) => `layers:${projectDir}:selection`;
+const presentationStorageKey = (projectDir) => `layers:${projectDir}:presentation`;
 
 function loadStoredSelection(projectDir, doc) {
   try {
@@ -34,6 +38,40 @@ function loadStoredSelection(projectDir, doc) {
     };
   } catch {
     return null;
+  }
+}
+
+function loadStoredPresentation(projectDir, doc) {
+  try {
+    const raw = localStorage.getItem(presentationStorageKey(projectDir));
+    if (!raw) return null;
+    return parsePresentation(JSON.parse(raw), doc).presentation;
+  } catch {
+    return null;
+  }
+}
+
+// A 404, or the dev server's SPA fallback (HTML instead of JSON), both mean "no presentation
+// file" — never an error.
+async function fetchPresentationFile(projectDir) {
+  try {
+    const res = await fetch(`/${projectDir}/presentation.json`);
+    if (!res.ok) return null;
+    return JSON.parse(await res.text());
+  } catch {
+    return null;
+  }
+}
+
+async function loadInitialPresentation(projectDir, doc) {
+  const stored = loadStoredPresentation(projectDir, doc);
+  if (stored) return stored;
+  const fetched = await fetchPresentationFile(projectDir);
+  if (!fetched) return { version: 1, scenes: [] };
+  try {
+    return parsePresentation(fetched, doc).presentation;
+  } catch {
+    return { version: 1, scenes: [] };
   }
 }
 
@@ -73,11 +111,21 @@ function injectStylesheet(css) {
   document.head.appendChild(style);
 }
 
-function boot(app, projectDir, { project, doc, sources, offsets, index }, requestedFile, requestedI, requestedSolo) {
+function boot(
+  app,
+  projectDir,
+  { project, doc, sources, offsets, index },
+  requestedFile,
+  requestedI,
+  requestedSolo,
+  initialPresentation,
+  requestedScene,
+) {
   const colours = assignPalette(doc.layers.map((l) => l.id));
   injectStylesheet(layerStylesheet(doc.layers, colours));
 
   const layout = buildLayout(app);
+  wireRightSections(app, projectDir);
 
   const marksByKey = new Map();
   for (const layer of doc.layers) {
@@ -100,10 +148,30 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     }
   }
 
+  let presentation = initialPresentation;
+  let scenesMessage = null;
+  let pinStep = false;
+
+  function persistPresentation() {
+    try {
+      localStorage.setItem(presentationStorageKey(projectDir), JSON.stringify(presentation));
+    } catch {
+      // ignore
+    }
+  }
+
   const allLayerIds = doc.layers.map((l) => l.id);
-  let solo = requestedSolo && layersForSolo(allLayerIds, requestedSolo).length ? requestedSolo : null;
+
+  // `&scene=` takes precedence over `&solo=` (docs/SELECTION-AND-SCENES.md Part B).
+  const sceneIdx = requestedScene !== null ? Number(requestedScene) : null;
+  let activeSceneId = Number.isInteger(sceneIdx) && presentation.scenes[sceneIdx - 1] ? presentation.scenes[sceneIdx - 1].id : null;
+  let solo = !activeSceneId && requestedSolo && layersForSolo(allLayerIds, requestedSolo).length ? requestedSolo : null;
 
   let activeFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
+  if (activeSceneId) {
+    const scene = presentation.scenes.find((s) => s.id === activeSceneId);
+    if (scene.file && project.files.includes(scene.file)) activeFile = scene.file;
+  }
   let selectedSymbol = null;
   let clickableMarks = []; // char-offset marks of ALL non-exec layers — clicks work whether or not a layer is painted
 
@@ -117,6 +185,15 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     const i = Number(requestedI);
     if (Number.isInteger(i)) {
       stepper.goto(i);
+      stepperActive = true;
+      activeFile = stepper.current().file;
+    }
+  }
+
+  if (stepper && activeSceneId) {
+    const scene = presentation.scenes.find((s) => s.id === activeSceneId);
+    if (scene.step !== null) {
+      stepper.goto(scene.step);
       stepperActive = true;
       activeFile = stepper.current().file;
     }
@@ -170,13 +247,22 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     return selectedInSolo.length > 0 ? selectedInSolo : inSolo;
   }
 
+  // A scene activation is a display override exactly like solo (docs/SELECTION-AND-SCENES.md
+  // Part B): paint exactly its marks, strong-styled, dimming the rest. It never touches
+  // `selection`, and the two overrides are mutually exclusive (see setSolo / activateScene).
+  function activeScene() {
+    return activeSceneId ? presentation.scenes.find((s) => s.id === activeSceneId) : null;
+  }
+
   function paintFile(file) {
+    const scene = activeScene();
+    const sceneKeys = scene ? new Set(scene.marks) : null;
     const soloedIds = solo ? new Set(layersForSolo(allLayerIds, solo)) : null;
 
     clickableMarks = computeClickableMarks(file);
-    const painted = selectMarksToPaint(clickableMarks, soloedIds);
+    const painted = sceneKeys ? clickableMarks.filter((m) => sceneKeys.has(m.key)) : selectMarksToPaint(clickableMarks, soloedIds);
     const segments = flatten(painted.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
-    editor.setLayerDecorations(segments, colours, !!solo);
+    editor.setLayerDecorations(segments, colours, !!(sceneKeys || solo));
 
     const execLayer = doc.layers.find((l) => l.id === "exec.path");
     const execMarksInFile = execLayer
@@ -189,13 +275,15 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
             key: markKey("exec.path", m),
           }))
       : [];
-    const execRanges = selectMarksToPaint(execMarksInFile, soloedIds);
+    const execRanges = sceneKeys ? execMarksInFile.filter((m) => sceneKeys.has(m.key)) : selectMarksToPaint(execMarksInFile, soloedIds);
     editor.setExecDecorations(execRanges, execRanges.length > 0);
 
-    // Dim everything but the soloed layer(s) — except a solo of exec.path alone, which has
-    // no inline marks and is shown via the line highlight + non-executed dimming above.
-    const execOnlySolo = solo && [...soloedIds].every((id) => id.startsWith("exec."));
-    editor.setSoloDim(solo && !execOnlySolo ? segments.map((s) => ({ start: s.start, end: s.end })) : null);
+    // Dim everything but the override's marks — except an override made only of exec.path
+    // marks, which has no inline marks and is shown via the line highlight + dimming above.
+    const sceneOnlyExec = sceneKeys && [...sceneKeys].length > 0 && [...sceneKeys].every((k) => k.split("|")[0].startsWith("exec."));
+    const soloOnlyExec = soloedIds && [...soloedIds].every((id) => id.startsWith("exec."));
+    const dim = sceneKeys ? !sceneOnlyExec : solo && !soloOnlyExec;
+    editor.setSoloDim(dim ? segments.map((s) => ({ start: s.start, end: s.end })) : null);
 
     paintSelection();
     paintStepper();
@@ -223,7 +311,12 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     params.set("project", projectDir);
     params.set("file", activeFile);
     if (stepper && stepperActive) params.set("i", String(stepper.cursor));
-    if (solo) params.set("solo", solo);
+    if (activeSceneId) {
+      const idx = presentation.scenes.findIndex((s) => s.id === activeSceneId);
+      if (idx !== -1) params.set("scene", String(idx + 1));
+    } else if (solo) {
+      params.set("solo", solo);
+    }
     history.replaceState(null, "", `?${params.toString()}`);
   }
 
@@ -296,9 +389,11 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
 
   function setSolo(value) {
     solo = value;
+    if (value) activeSceneId = null; // solo and a scene are mutually exclusive
     paintFile(activeFile);
     renderLayers();
-    renderSoloChip();
+    renderChip();
+    renderScenes();
     syncURL();
   }
 
@@ -306,18 +401,172 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     setSolo(cycleSolo(allLayerIds, solo, direction));
   }
 
-  function renderSoloChip() {
-    layout.soloChipEl.hidden = !solo;
-    if (!solo) return;
+  // Chip above the editor: shows whichever display override (scene or solo) is active.
+  function renderChip() {
+    const scene = activeScene();
+    layout.soloChipEl.hidden = !scene && !solo;
+    if (!scene && !solo) return;
     layout.soloChipEl.innerHTML = "";
     const text = document.createElement("span");
-    text.textContent = `solo: ${solo}`;
+    if (scene) {
+      const idx = presentation.scenes.findIndex((s) => s.id === scene.id) + 1;
+      text.textContent = `scene ${idx}/${presentation.scenes.length}: ${scene.name}`;
+    } else {
+      text.textContent = `solo: ${solo}`;
+    }
     const clear = document.createElement("button");
     clear.type = "button";
     clear.className = "solo-chip-clear";
     clear.textContent = "✕";
-    clear.addEventListener("click", () => setSolo(null));
+    clear.addEventListener("click", () => (scene ? activateScene(null) : setSolo(null)));
     layout.soloChipEl.append(text, clear);
+  }
+
+  // --- Scenes ---
+
+  // Exactly what is painted right now (selection, or the solo override) across ALL files —
+  // the capture used by "+ from view" and "⟲ update" (docs/SELECTION-AND-SCENES.md Part B).
+  function currentPaintedKeys() {
+    if (!solo) return [...selection];
+    const soloedIds = new Set(layersForSolo(allLayerIds, solo));
+    const keys = [];
+    for (const layer of doc.layers) {
+      if (!soloedIds.has(layer.id)) continue;
+      const layerKeys = layer.marks.map((m) => markKey(layer.id, m));
+      const selected = layerKeys.filter((k) => selection.has(k));
+      keys.push(...(selected.length > 0 ? selected : layerKeys));
+    }
+    return keys;
+  }
+
+  function captureView() {
+    return {
+      file: activeFile,
+      marks: currentPaintedKeys(),
+      step: pinStep && stepper ? stepper.cursor : null,
+    };
+  }
+
+  function defaultSceneName() {
+    return `Scene ${presentation.scenes.length + 1}`;
+  }
+
+  function addSceneFromView(name, { pinStep: pinStepOverride } = {}) {
+    const usePinStep = pinStepOverride ?? pinStep;
+    const { file, marks } = captureView();
+    const step = usePinStep && stepper ? stepper.cursor : null;
+    presentation = addScene(presentation, { name, file, marks, step });
+    persistPresentation();
+    renderScenes();
+  }
+
+  function duplicateSceneById(id) {
+    presentation = duplicateScene(presentation, id);
+    persistPresentation();
+    renderScenes();
+    renderChip();
+  }
+
+  function moveSceneById(id, toIndex) {
+    presentation = moveScene(presentation, id, toIndex);
+    persistPresentation();
+    renderScenes();
+    renderChip();
+  }
+
+  function renameSceneById(id, name) {
+    presentation = renameScene(presentation, id, name);
+    persistPresentation();
+    renderScenes();
+    renderChip();
+  }
+
+  function updateSceneById(id) {
+    const { file, marks } = captureView();
+    const step = pinStep && stepper ? stepper.cursor : null;
+    presentation = updateScene(presentation, id, { file, marks, step });
+    persistPresentation();
+    if (id === activeSceneId) paintFile(activeFile);
+    renderScenes();
+  }
+
+  function loadSceneById(id) {
+    const scene = presentation.scenes.find((s) => s.id === id);
+    if (scene) setSelection(new Set(scene.marks));
+  }
+
+  function removeSceneById(id) {
+    presentation = removeScene(presentation, id);
+    persistPresentation();
+    if (activeSceneId === id) activateScene(null);
+    else renderScenes();
+  }
+
+  // Raw activation setter: paints scene.marks as a strong override (or clears the override
+  // for id === null), opens scene.file, and goes to scene.step through the stepper's own
+  // goto path. Does NOT touch `selection`. Mutually exclusive with solo.
+  function activateScene(id) {
+    const scene = id ? presentation.scenes.find((s) => s.id === id) : null;
+    activeSceneId = scene ? scene.id : null;
+    if (scene) solo = null;
+
+    const nextFile = scene?.file && project.files.includes(scene.file) ? scene.file : activeFile;
+    if (nextFile !== activeFile) {
+      activeFile = nextFile;
+      editor.openFile(activeFile, sources[activeFile]);
+      renderTabs();
+    }
+    paintFile(activeFile);
+    renderLayers();
+    renderChip();
+    renderScenes();
+    if (scene && scene.step !== null && stepper) gotoStepper(scene.step);
+    syncURL();
+  }
+
+  function toggleScene(id) {
+    activateScene(activeSceneId === id ? null : id);
+  }
+
+  function importPresentationFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const json = JSON.parse(String(reader.result));
+        const { presentation: parsed, dropped } = parsePresentation(json, doc);
+        presentation = parsed;
+        if (activeSceneId && !parsed.scenes.some((s) => s.id === activeSceneId)) activeSceneId = null;
+        persistPresentation();
+        scenesMessage = { type: "info", text: `imported ${parsed.scenes.length} scenes, dropped ${dropped} unknown marks` };
+      } catch (err) {
+        scenesMessage = { type: "error", text: err.message };
+      }
+      paintFile(activeFile);
+      renderLayers();
+      renderChip();
+      renderScenes();
+      syncURL();
+    };
+    reader.readAsText(file);
+  }
+
+  const scenesPanel = createScenesPanel(layout.scenesEl, {
+    onAddFromView: () => addSceneFromView(defaultSceneName()),
+    onTogglePinStep: (on) => {
+      pinStep = on;
+    },
+    onActivate: toggleScene,
+    onRename: renameSceneById,
+    onDuplicate: duplicateSceneById,
+    onUpdate: updateSceneById,
+    onLoad: loadSceneById,
+    onRemove: removeSceneById,
+    onMove: moveSceneById,
+    onImportFile: importPresentationFile,
+  });
+
+  function renderScenes() {
+    scenesPanel.render({ presentation, activeId: activeSceneId, message: scenesMessage, pinStep });
   }
 
   function selectSymbol(symbol) {
@@ -448,6 +697,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      activateScene(null);
       clearSelection();
       setSolo(null);
       return;
@@ -464,11 +714,19 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     if (isBlockingFocus()) return;
 
     if (event.key === "]") {
-      soloCycle(1);
+      if (presentation.scenes.length > 0) activateScene(cycleScene(presentation, activeSceneId, 1));
+      else soloCycle(1);
       return;
     }
     if (event.key === "[") {
-      soloCycle(-1);
+      if (presentation.scenes.length > 0) activateScene(cycleScene(presentation, activeSceneId, -1));
+      else soloCycle(-1);
+      return;
+    }
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && activeSceneId) {
+      event.preventDefault();
+      const idx = presentation.scenes.findIndex((s) => s.id === activeSceneId);
+      moveSceneById(activeSceneId, idx + (event.key === "ArrowDown" ? 1 : -1));
       return;
     }
 
@@ -485,10 +743,11 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   renderLayers();
   openFile(activeFile);
   selectSymbol(null);
-  renderSoloChip();
+  renderChip();
+  renderScenes();
 
   if (stepper) {
-    layout.stepperEl.hidden = false;
+    layout.stepperSectionEl.hidden = false;
     renderStepper();
     if (stepperActive) editor.scrollIntoView(offsets[activeFile].byteToChar(stepper.current().start));
   }
@@ -543,6 +802,20 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
       stepBackOver: () => runStepperAction("stepBackOver"),
       stepOut: () => runStepperAction("stepOut"),
     },
+    scenes: {
+      list: () => presentation.scenes.map((s) => ({ ...s, marks: [...s.marks] })),
+      addFromView: (name, opts) => addSceneFromView(name, opts),
+      activate: (idOrNull) => activateScene(idOrNull),
+      duplicate: (id) => duplicateSceneById(id),
+      move: (id, toIndex) => moveSceneById(id, toIndex),
+      rename: (id, name) => renameSceneById(id, name),
+      update: (id) => updateSceneById(id),
+      load: (id) => loadSceneById(id),
+      remove: (id) => removeSceneById(id),
+      get activeId() {
+        return activeSceneId;
+      },
+    },
   };
 }
 
@@ -564,7 +837,9 @@ async function main() {
     return;
   }
 
-  boot(app, projectDir, result, params.get("file"), params.get("i"), params.get("solo"));
+  const presentation = await loadInitialPresentation(projectDir, result.doc);
+
+  boot(app, projectDir, result, params.get("file"), params.get("i"), params.get("solo"), presentation, params.get("scene"));
 }
 
 main();

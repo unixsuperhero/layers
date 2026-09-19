@@ -60,7 +60,8 @@ body {
 }
 
 .col-right {
-  padding: 8px;
+  padding: 0;
+  overflow-y: hidden;
 }
 
 .col-center {
@@ -475,7 +476,8 @@ h3 {
   background: #50c878;
 }
 
-/* --- stepper --- */
+/* --- right column: Scenes / Symbol / Stepper, each an independently scrolling,
+   collapsible section --- */
 
 .col-right {
   display: flex;
@@ -483,19 +485,216 @@ h3 {
   min-height: 0;
 }
 
-.symbol-panel {
-  flex: none;
-  max-height: 45%;
-  overflow-y: auto;
+.right-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.stepper-panel {
-  flex: 1;
+.right-section:last-child {
+  border-bottom: none;
+}
+
+.right-section[data-section="scenes"] {
+  flex: 1 1 34%;
+}
+
+.right-section[data-section="symbol"] {
+  flex: 1 1 22%;
+}
+
+.right-section[data-section="stepper"] {
+  flex: 2 1 44%;
+}
+
+.right-section.collapsed {
+  flex: none;
+}
+
+.right-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 4px;
+  cursor: pointer;
+  user-select: none;
+  flex: none;
+}
+
+.right-section-header h2 {
+  margin: 0;
+}
+
+.right-section-header::after {
+  content: "▾";
+  color: var(--fg-dim);
+  font-size: 9px;
+  padding-right: 2px;
+}
+
+.right-section.collapsed .right-section-header::after {
+  content: "▸";
+}
+
+.right-section-body {
   min-height: 0;
   overflow-y: auto;
-  border-top: 1px solid var(--border);
-  margin-top: 8px;
-  padding-top: 8px;
+  padding: 0 8px 8px;
+}
+
+.right-section.collapsed .right-section-body {
+  display: none;
+}
+
+/* --- Scenes panel --- */
+
+.scenes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.scenes-toolbar button,
+.scenes-toolbar a {
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+  font: inherit;
+  text-decoration: none;
+}
+
+.scenes-toolbar button:hover,
+.scenes-toolbar a:hover {
+  background: var(--border);
+}
+
+.scenes-pin-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.scenes-message {
+  color: var(--fg-dim);
+  font-size: 11px;
+  margin-bottom: 6px;
+  min-height: 13px;
+}
+
+.scenes-message.error {
+  color: #e06c75;
+}
+
+.scenes-empty {
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+
+.scene-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  border-left: 2px solid transparent;
+  cursor: grab;
+}
+
+.scene-row.active {
+  background: rgba(97, 175, 239, 0.12);
+  border-left-color: var(--accent);
+}
+
+.scene-handle {
+  flex: none;
+  color: var(--fg-dim);
+  cursor: grab;
+}
+
+.scene-index {
+  flex: none;
+  color: var(--fg-dim);
+  font-size: 11px;
+  width: 14px;
+  text-align: right;
+}
+
+.scene-name-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scene-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.scene-name:hover {
+  color: var(--accent);
+}
+
+.scene-row.active .scene-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.scene-name-input {
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font: inherit;
+  padding: 1px 4px;
+}
+
+.scene-active-badge {
+  flex: none;
+  color: var(--accent);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.scene-step-badge {
+  flex: none;
+  color: #ffbf3d;
+  font-size: 11px;
+}
+
+.scene-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.scene-action {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.scene-action:hover {
+  color: var(--fg);
+  background: var(--border);
 }
 
 .step-current {
