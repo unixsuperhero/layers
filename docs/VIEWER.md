@@ -32,6 +32,10 @@ If `?project=` is missing, default to `fixtures/example-ruby`.
 │ ☑ defs.*  │                                      │   symbol's   │
 │ ☑ vars.*  │                                      │   defs/refs) │
 │ ☐ exec.*  │                                      │──────────────│
+│           │                                      │ CALL TREE    │
+│           │                                      │  ▾ main.rb   │
+│           │                                      │   Invoice#…  │
+│           │                                      │──────────────│
 │           │                                      │ STEPPER      │
 │           │                                      │  ◀◀ ◀ ▶ ▶▶ ⤴ │
 │           │                                      │  event 7/24  │
@@ -40,9 +44,9 @@ If `?project=` is missing, default to `fixtures/example-ruby`.
 └───────────┴──────────────────────────────────────┴──────────────┘
 ```
 
-The right column is three sections — Scenes, Symbol, Stepper — each scrolling independently
-and collapsing when its heading is clicked (state remembered in localStorage). See "Scenes"
-below.
+The right column is four sections — Scenes, Symbol, Call Tree, Stepper — each scrolling
+independently and collapsing when its heading is clicked (state remembered in localStorage).
+See "Scenes" and "Call Tree" below.
 
 Dark theme, monospace, compact. Each layer id gets a stable colour (assign from a fixed
 palette by sorted layer id index — deterministic, not random).
@@ -172,6 +176,47 @@ Only shown when `doc.trace` is non-empty. Drives `createStepper(doc.trace)`.
   previous displayed event are highlighted.
 - The stepper works regardless of which layers are toggled on.
 
+## Call Tree
+
+Full spec: [docs/ROUND-3.md](ROUND-3.md) section "E. Call Stack panel". Right-column section
+(only shown when `doc.trace` is non-empty), rendered from `buildCallTree(doc.trace)`
+(`src/core/calltree.js`) via two viewer modules:
+
+- `src/viewer/calltree-rows.js` (pure, `node --test`-ed in `test/viewer-calltree-rows.test.js`):
+  `groupCallTree(node)` turns the call-tree node into a display tree where consecutive sibling
+  BLOCK nodes sharing the same `def` span collapse into one `{ kind: "blockGroup", blocks: […] }`
+  node; `buildCallTreeRows(root)` flattens that into `{ display, rows, index }` — `rows` in
+  document order with each row's auto-expand ancestor chain (never including a `blockGroup` id,
+  since a group only ever expands on an explicit click) and `groupId` when the row is one of a
+  group's iterations, `index` mapping a raw node's `enter` to its row. `defaultExpandedIds(rows)`
+  expands every row down to call-tree depth 2, collapsing deeper (so the fixture's `block ×2` —
+  depth 3 — starts collapsed).
+- `src/viewer/calltree-panel.js`: `createCallTreePanel(root, host)` owns per-mount state
+  (`expanded` ids, the row that follows the stepper) and renders into `host.containerEl`. Each
+  row is two lines: symbol (dim namespace prefix + bright name, e.g. `Invoice#summary`) plus the
+  return value right-aligned, then a dim `site → def` (or just `def` for a block/root) meta line
+  underneath — kept on its own line rather than truncating the symbol when the column is narrow.
+  A root row shows the entry file with meta `(top level)`; a lone block row shows `block`; a
+  `block ×N` group row expands to `#1`, `#2`, … iterations. An exception frame (no matching
+  return: `value` null, `exit` is the trace's last index, and a `raise` event falls inside it)
+  shows `⇒ (raised)`. Hovering a row's title shows `events [enter…exit]`.
+- **Click a row** → `host.onGoto(enterIndex)` (wired in `main.js` to `jumpToRef` on the
+  call/b_call event's span, then `stepper.goto(enterIndex)`) — the same `goto()` path the stepper
+  buttons use (file opens, current-statement decoration + stepper panel update), and recorded in
+  jump history like a stack-frame click, so `back()` returns to where you were. Clicking a
+  `block ×N` group jumps to its first iteration; a caret click only expands/collapses (no goto).
+- **Follows the stepper**: `app-stepper.js`'s `step()` calls `host.onCursorChange()` after every
+  cursor-settling action (buttons, keys, slider, scene activation, `stepper.goto`), which
+  `main.js` wires to `callTree.follow(cursor)`. `follow` uses `frameAt(root, cursor)` to find the
+  innermost node, resolves it to its row (the group row while its `block ×N` run is collapsed,
+  the right iteration once expanded), auto-expands that row's ancestors, and scrolls it into view
+  (`scrollIntoView({block: "nearest"})`) within the panel. Expanding a group's caret while a
+  cursor is active re-resolves and re-scrolls too, so revealing `#2` inside an already-active
+  group re-highlights it immediately. Nothing is highlighted before the stepper has been
+  interacted with, unless the URL restored `i=`.
+- Debug handle: `window.__layers.callTree = { rows(), goto(id) }` — `rows()` returns the
+  currently visible rows as `{ id, label, enter, exit, depth, active }`.
+
 ## Scenes
 
 A Photoshop-style presentation list (right column, above Symbol/Stepper) for saving,
@@ -269,6 +314,8 @@ src/viewer/solo.js         legacy layer/namespace solo-id logic (pure)
 src/viewer/selection.js    per-mark selection logic (pure)
 src/viewer/scenes.js       presentation (Scenes) pure list logic (add/move/rename/parse/…)
 src/viewer/scenes-panel.js Scenes panel DOM
+src/viewer/calltree-rows.js Call Tree: call-tree node -> display tree + flat row index (pure)
+src/viewer/calltree-panel.js Call Tree panel: render, expand state, follow-the-stepper, click-to-goto
 src/viewer/style.css
 ```
 
