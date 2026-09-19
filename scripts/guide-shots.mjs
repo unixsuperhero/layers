@@ -70,6 +70,7 @@ try {
     { n: 5, target: page.locator(".cm-content"), place: "top", pad: -6 },
     { n: 6, target: page.locator("#symbol-panel"), place: "left" },
     { n: 7, target: page.locator("#stepper-panel"), place: "left" },
+    { n: 8, target: page.locator("#scenes-panel"), place: "left" },
   ]);
 
   // 2. layer panel: what each control does
