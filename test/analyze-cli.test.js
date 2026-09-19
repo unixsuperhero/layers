@@ -88,6 +88,11 @@ function createSha256(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+// Round 4 (docs/ROUND-4.md): this is already the "relaxed" shape the round-4 spec asks for --
+// it only compares the layers PRESENT IN THE FIXTURE (so the new effects.*/defs.constants
+// layers are simply not iterated), keyed on (layer, file, start, end, symbol, role), and only
+// additionally checks data.scope (so the new data.effects/data.resolved keys on existing
+// layers are ignored). No changes were needed here for round 4.
 test('static layers are a superset of the hand-written fixture (same layer/file/start/end/symbol/role/scope)', () => {
   const out = tmpDir('layers-static-');
   try {
@@ -286,4 +291,132 @@ test('--stdout prints a valid single-file document and writes nothing', () => {
   assert.deepEqual(Object.keys(doc.files), ['invoice.rb']);
   assert.ok(validate(doc).ok, JSON.stringify(validate(doc).errors));
   assert.ok(!('trace' in doc));
+});
+
+// ---- Round 4: effects.* + defs.constants (docs/ROUND-4.md) -----------------------------
+
+function markAt(doc, layerId, file, text) {
+  const layer = doc.layers.find((l) => l.id === layerId);
+  if (!layer) return undefined;
+  const source = readFileSync(path.join(FIXTURE_SRC, file), 'utf8');
+  return layer.marks.find((m) => m.file === file && Buffer.from(source, 'utf8').slice(m.start, m.end).toString('utf8') === text);
+}
+
+function methodEffects(doc, symbol) {
+  const layer = doc.layers.find((l) => l.id === 'defs.methods');
+  const m = layer.marks.find((x) => x.symbol === symbol);
+  return m && m.data.effects;
+}
+
+test('effects layers are present, valid, and match the fixture project\'s known verdicts', () => {
+  const out = tmpDir('layers-effects-');
+  try {
+    const r = run([FIXTURE_SRC, '--out', out]);
+    assert.equal(r.status, 0, r.stderr);
+    const doc = JSON.parse(readFileSync(path.join(out, 'layers.json'), 'utf8'));
+    const result = validate(doc);
+    assert.ok(result.ok, JSON.stringify(result.errors));
+
+    const effectsLayerIds = doc.layers.map((l) => l.id).filter((id) => id.startsWith('effects.'));
+    assert.ok(effectsLayerIds.length > 0, 'expected at least one effects.* layer');
+
+    assert.deepEqual(methodEffects(doc, 'Invoice#initialize'), { verdict: 'impure', direct: ['state'], via: {} });
+    assert.deepEqual(methodEffects(doc, 'Invoice#summary'), { verdict: 'pure', direct: [], via: {} });
+    assert.deepEqual(methodEffects(doc, 'Invoice#overdue?'), { verdict: 'pure', direct: [], via: {} });
+    assert.deepEqual(methodEffects(doc, 'Mailer#deliver'), { verdict: 'impure', direct: ['io'], via: {} });
+    assert.deepEqual(methodEffects(doc, 'Mailer#notify'), { verdict: 'impure', direct: [], via: { io: ['Mailer#deliver'] } });
+
+    const ioMark = markAt(doc, 'effects.io', 'mailer.rb', 'puts');
+    assert.ok(ioMark, 'expected an effects.io mark on the `puts` call in Mailer#deliver');
+    assert.equal(ioMark.data.what, 'output');
+
+    const deliverCallsMark = markAt(doc, 'effects.calls', 'mailer.rb', 'deliver');
+    assert.ok(deliverCallsMark, 'expected an effects.calls mark on the `deliver` call site inside Mailer#notify');
+    assert.equal(deliverCallsMark.symbol, 'Mailer#deliver');
+    assert.deepEqual(deliverCallsMark.data.effects, ['io']);
+
+    const notifyCallsMark = markAt(doc, 'effects.calls', 'main.rb', 'notify');
+    assert.ok(notifyCallsMark, 'expected an effects.calls mark on the top-level Mailer.new.notify(invoice) call site');
+    assert.equal(notifyCallsMark.symbol, 'Mailer#notify');
+    assert.equal(notifyCallsMark.data.scope, null);
+
+    const newCallsMark = markAt(doc, 'effects.calls', 'main.rb', 'new');
+    assert.equal(newCallsMark, undefined, 'Invoice.new(...) must NOT get an effects.calls mark (`.new` drops the callee\'s state)');
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('--all-constants: unresolved constant reads are emitted with data.resolved = false; without the flag they are absent', () => {
+  const outWith = tmpDir('layers-allconst-with-');
+  const outWithout = tmpDir('layers-allconst-without-');
+  try {
+    const withFlag = run([FIXTURE_SRC, '--out', outWith, '--all-constants']);
+    assert.equal(withFlag.status, 0, withFlag.stderr);
+    const docWith = JSON.parse(readFileSync(path.join(outWith, 'layers.json'), 'utf8'));
+    assert.ok(validate(docWith).ok, JSON.stringify(validate(docWith).errors));
+
+    const withoutFlag = run([FIXTURE_SRC, '--out', outWithout]);
+    assert.equal(withoutFlag.status, 0, withoutFlag.stderr);
+    const docWithout = JSON.parse(readFileSync(path.join(outWithout, 'layers.json'), 'utf8'));
+
+    // The fixture project has no unresolved constant reads of its own, so exercise this on a
+    // tiny ad hoc project instead.
+    const dir = tmpDir('layers-allconst-src-');
+    writeFileSync(path.join(dir, 'a.rb'), 'JSON.parse(x)\n');
+    const outAdhocWith = tmpDir('layers-allconst-adhoc-with-');
+    const outAdhocWithout = tmpDir('layers-allconst-adhoc-without-');
+    try {
+      const adhocWith = run([dir, '--out', outAdhocWith, '--all-constants']);
+      assert.equal(adhocWith.status, 0, adhocWith.stderr);
+      const docAdhocWith = JSON.parse(readFileSync(path.join(outAdhocWith, 'layers.json'), 'utf8'));
+      const refsWith = docAdhocWith.layers.find((l) => l.id === 'refs.constants');
+      const jsonMark = refsWith && refsWith.marks.find((m) => m.symbol === 'JSON');
+      assert.ok(jsonMark, 'expected an unresolved refs.constants mark for JSON with --all-constants');
+      assert.equal(jsonMark.data.resolved, false);
+
+      const adhocWithout = run([dir, '--out', outAdhocWithout]);
+      assert.equal(adhocWithout.status, 0, adhocWithout.stderr);
+      const docAdhocWithout = JSON.parse(readFileSync(path.join(outAdhocWithout, 'layers.json'), 'utf8'));
+      const refsWithout = docAdhocWithout.layers.find((l) => l.id === 'refs.constants');
+      assert.ok(!refsWithout || refsWithout.marks.length === 0, 'no unresolved refs.constants marks without --all-constants');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outAdhocWith, { recursive: true, force: true });
+      rmSync(outAdhocWithout, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(outWith, { recursive: true, force: true });
+    rmSync(outWithout, { recursive: true, force: true });
+  }
+});
+
+test('determinism holds with the new effects.*/defs.constants layers included', () => {
+  const outA = tmpDir('layers-r4-det-a-');
+  const outB = tmpDir('layers-r4-det-b-');
+  try {
+    const a = run([FIXTURE_SRC, '--entry', 'main.rb', '--out', outA, '--all-constants']);
+    assert.equal(a.status, 0, a.stderr);
+    const b = run([FIXTURE_SRC, '--entry', 'main.rb', '--out', outB, '--all-constants']);
+    assert.equal(b.status, 0, b.stderr);
+
+    const jsonA = readFileSync(path.join(outA, 'layers.json'), 'utf8');
+    const jsonB = readFileSync(path.join(outB, 'layers.json'), 'utf8');
+    assert.equal(jsonA, jsonB, 'two runs produced different bytes');
+
+    const doc = JSON.parse(jsonA);
+    assert.ok(doc.layers.some((l) => l.id.startsWith('effects.')));
+    assert.ok(validate(doc).ok, JSON.stringify(validate(doc).errors));
+  } finally {
+    rmSync(outA, { recursive: true, force: true });
+    rmSync(outB, { recursive: true, force: true });
+  }
+});
+
+test('--stdout still works and includes the round-4 layers', () => {
+  const r = run([FIXTURE_SRC, '--stdout', '--all-constants']);
+  assert.equal(r.status, 0, r.stderr);
+  const doc = JSON.parse(r.stdout);
+  assert.ok(validate(doc).ok, JSON.stringify(validate(doc).errors));
+  assert.ok(doc.layers.some((l) => l.id === 'defs.methods' && l.marks.some((m) => m.data.effects)));
 });
