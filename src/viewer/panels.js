@@ -42,6 +42,10 @@ export function buildLayout(app) {
           <div class="right-section-header"><h2>Symbol</h2></div>
           <div class="right-section-body symbol-panel" id="symbol-panel"></div>
         </section>
+        <section class="right-section" data-section="calltree" id="calltree-section" hidden>
+          <div class="right-section-header"><h2>Call Tree</h2></div>
+          <div class="right-section-body calltree-panel" id="calltree-panel"></div>
+        </section>
         <section class="right-section" data-section="stepper" id="stepper-section" hidden>
           <div class="right-section-header"><h2>Stepper</h2></div>
           <div class="right-section-body stepper-panel" id="stepper-panel"></div>
@@ -68,6 +72,8 @@ export function buildLayout(app) {
     soloChipEl: app.querySelector("#solo-chip"),
     scenesEl: app.querySelector("#scenes-panel"),
     symbolEl: app.querySelector("#symbol-panel"),
+    callTreeEl: app.querySelector("#calltree-panel"),
+    callTreeSectionEl: app.querySelector("#calltree-section"),
     stepperEl: app.querySelector("#stepper-panel"),
     stepperSectionEl: app.querySelector("#stepper-section"),
     backBtn: app.querySelector("#nav-back"),

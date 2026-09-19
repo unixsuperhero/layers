@@ -19,7 +19,7 @@ export const STEP_KEYS = {
 
 // stepper: createStepper(doc.trace) result, or null when doc.trace is empty.
 // host: { editor, offsets, stepperPanelEl, jumpToRef(ref), openFile(file), getActiveFile(),
-//         syncURL() }
+//         syncURL(), onCursorChange() (optional — called after the cursor settles) }
 export function createStepperController(stepper, host, { initialActive = false } = {}) {
   let active = initialActive;
   let lastLocals = null;
@@ -65,6 +65,7 @@ export function createStepperController(stepper, host, { initialActive = false }
     fn();
     render();
     syncToEditor();
+    host.onCursorChange?.();
   }
 
   function goto(i) {

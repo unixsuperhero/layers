@@ -15,8 +15,10 @@ import { createOpenDialog } from "./open-dialog.js";
 import { assembleBundle, bundleKey } from "../core/bundle.js";
 import { flatten } from "../core/flatten.js";
 import { createStepper } from "../core/stepper.js";
+import { buildCallTree } from "../core/calltree.js";
 import { buildSymbolIndex } from "../core/symbols.js";
 import { makeOffsetMap } from "../core/offsets.js";
+import { createCallTreePanel } from "./calltree-panel.js";
 import { buildLayout, wireRightSections, renderFileList, renderFileTabs, renderRailPanel, renderSymbolPanel, layerStylesheet } from "./panels.js";
 
 const DEFAULT_PROJECT = "fixtures/example-ruby";
@@ -457,9 +459,24 @@ export function mountApp(app, bundle, opts = {}) {
           openFile,
           getActiveFile: () => activeFile,
           syncURL,
+          onCursorChange: () => callTree?.follow(traceStepper.cursor),
         },
         { initialActive: stepperPrimed },
       )
+    : null;
+
+  const callTree = traceStepper
+    ? createCallTreePanel(buildCallTree(doc.trace), {
+        containerEl: layout.callTreeEl,
+        sources,
+        offsets,
+        trace: doc.trace,
+        onGoto: (enterIndex) => {
+          const event = doc.trace[enterIndex];
+          jumpToRef({ file: event.file, start: event.start, end: event.end });
+          stepper.goto(enterIndex);
+        },
+      })
     : null;
 
   const scenes = createScenesController(
@@ -565,6 +582,11 @@ export function mountApp(app, bundle, opts = {}) {
     stepper.render();
     if (stepper.active) editor.scrollIntoView(offsets[activeFile].byteToChar(traceStepper.current().start));
   }
+  if (callTree) {
+    layout.callTreeSectionEl.hidden = false;
+    callTree.render();
+    if (stepper.active) callTree.follow(traceStepper.cursor);
+  }
 
   window.__layers = {
     state: {
@@ -622,6 +644,10 @@ export function mountApp(app, bundle, opts = {}) {
       stepOver: () => stepper.runAction("stepOver"),
       stepBackOver: () => stepper.runAction("stepBackOver"),
       stepOut: () => stepper.runAction("stepOut"),
+    },
+    callTree: callTree && {
+      rows: () => callTree.rows(),
+      goto: (id) => callTree.goto(id),
     },
     scenes: {
       list: () => scenes.presentation.scenes.map((s) => ({ ...s, marks: [...s.marks] })),
