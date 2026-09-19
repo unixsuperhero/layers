@@ -10,6 +10,7 @@
   "scripts": {
     "fixture": "node scripts/build-fixture.mjs fixtures/example-ruby",
     "validate": "node bin/layers-validate.mjs",
+    "analyze": "bin/layers-analyze",
     "test": "node --test test/*.test.js",
     "dev": "vite",
     "build": "vite build",
