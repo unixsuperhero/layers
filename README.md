@@ -23,6 +23,7 @@ npm run fixture      # fixture.spec.json → layers.json
 npm test
 npm run validate fixtures/example-ruby/layers.json
 npm run dev          # open http://localhost:5173/?project=fixtures/example-ruby
+npm run smoke        # headless-browser assertions + screenshots in scripts/smoke-out/
 ```
 
 ## Later phases
