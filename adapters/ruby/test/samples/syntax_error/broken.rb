@@ -1,0 +1,4 @@
+class Broken
+  def oops(
+    1 +
+end
