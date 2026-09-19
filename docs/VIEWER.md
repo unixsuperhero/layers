@@ -48,8 +48,12 @@ The right column is four sections — Scenes, Symbol, Call Tree, Stepper — eac
 independently and collapsing when its heading is clicked (state remembered in localStorage).
 See "Scenes" and "Call Tree" below.
 
-Dark theme, monospace, compact. Each layer id gets a stable colour (assign from a fixed
-palette by sorted layer id index — deterministic, not random).
+Dark theme, monospace, compact. Each layer id gets a stable colour: `palette.js`'s
+`assignPalette` is namespace-aware — `defs`/`vars`/`refs`/`exec`/`effects` (plus a
+deterministic hash for any other namespace) each anchor a hue family, and layers within a
+namespace spread across an arc that widens as that namespace gets more crowded — so all
+~17 layers (once `effects.*`/`defs.constants` are included, docs/ROUND-4.md) stay pairwise
+distinguishable instead of wrapping a fixed 12-colour palette. Deterministic, not random.
 
 ## Painting layers
 
@@ -71,6 +75,7 @@ fight):
 | `vars.*`  | background + outline only (no extra cue) |
 | `vars.temps` | + dashed outline |
 | `exec.*`  | line-level: faint green line background + gutter dot (use `Decoration.line`), not inline marks |
+| `effects.*` | + wavy underline in the segment's own effects colour (`--lyr-effect`, set independently of `--lyr` so it survives overlapping a `vars`/`refs` mark) — see "Effects & verdicts" below |
 
 The colour itself is never hardcoded in `style.css`: `layerStylesheet` (panels.js) injects
 one rule per layer, `.lyr-<id> { --lyr: #… }`, sorted by id so the cascade consistently
@@ -146,6 +151,57 @@ Deviations from docs/ROUND-3.md D:
 
 Debug handle: `window.__layers.solo(idOrNamespaceOrNull)`; `window.__layers.state.solo`
 reads the current value.
+
+## Effects & verdicts
+
+Full spec: [docs/ROUND-4.md](ROUND-4.md). `effects.*` (`effects.state`/`.global`/`.args`/
+`.io`/`.control`/`.calls`/`.unknown`) and `defs.constants` are static layers with no schema
+change — the extra facts live in `mark.data`. Two default-off exceptions, both expressed by
+one data-driven predicate rather than a hardcoded id list:
+
+```js
+isDefaultOff = (layer) => layer.kind === "dynamic" || layer.id.startsWith("effects.")
+```
+
+(`src/viewer/selection.js`). `defs.constants` is static and doesn't start with `effects.`,
+so it's ticked by default like any other `defs.*`/`vars.*`/`refs.*` layer.
+
+- **Look**: an `effects.*` token gets the usual tinted background plus a wavy underline
+  (`.lyr-effect` in `style.css`) in its own colour, via a `--lyr-effect` custom property set
+  alongside `--lyr-bg` in `editor.js`'s `markDecorations` — independent of the `--lyr`
+  cascade-order trick used for the outline, so the wave stays visible even when an
+  `effects.*` mark exactly overlaps a `refs`/`vars` mark (e.g. a `refs.calls` and an
+  `effects.calls` mark covering the same call site).
+- **Tooltip**: `src/viewer/effects.js`'s `effectLabel(mark, text)` builds the hover text
+  from `mark.data` (`io: output`, `mutates arg: log`, `mutates self`, `global state`,
+  `calls impure Mailer#deliver → io`, `unknown call: frobnicate`; `control` uses the passed
+  `text` — the mark's own source substring — since the keyword itself isn't in `data`).
+  `titleForSegment(segment, paintedMarks, marksByKey, sourceTextOf)` finds the right mark
+  for a `flatten()`'d editor segment; `main.js` wires it into `seg.title` before calling
+  `editor.setLayerDecorations`.
+- **Verdicts**: `src/viewer/verdicts.js` — `verdictBadge`/`verdictClass` (`●` impure / `○`
+  pure / `?` unknown), `verdictTooltip({verdict, direct, via})` ("impure — direct: io · via
+  io: Mailer#deliver"), `methodEffectsMap(doc)` (symbol → `data.effects` off `defs.methods`
+  marks). Badges render on: a per-file **method group header** in the rail (`rail-tree.js`
+  attaches `node.effects` to each "method" node; `panels.js`'s `accordionHeader` renders the
+  badge), a `defs.methods` **item row** anywhere it appears (`panels.js` `renderItemRow`,
+  via `ctx.methodEffects`), a **Call Tree** call row (`calltree-panel.js`, via
+  `host.methodEffects`), and the **Symbol panel**, which also shows a full verdict block —
+  the verdict word, `direct:` kinds, and a `via <kind>: <callee>` list where each entry is
+  clickable (`renderVerdictBlock` in `panels.js`, wired to `jumpToSymbol` in `main.js` so a
+  via-jump is history-recorded like any other symbol jump).
+- **Verdict filter**: each file accordion gets a compact `all | impure N | pure N |
+  unknown N` control (`renderVerdictFilter` in `panels.js`) that hides non-matching method
+  groups — "Whole file" and "(top level)" always stay. State lives in `rail.js` (`filters:
+  Map<file, verdict>`), persisted in the same `bundleKey`-namespaced localStorage blob as
+  selection/expanded/focus.
+- Solo/scene/Focus/selection/import/export/`]`/`[` cycling all treat `effects.*` as just
+  another layer — no special-casing needed there.
+
+Deviation: `fixtures/example-ruby/src` has no constant assignments, so its `layers.json`
+has no `defs.constants` layer/marks (there's nothing to make one from) — the "default ON"
+half of `isDefaultOff` is instead covered directly by `test/viewer-selection.test.js`
+rather than by a rail row in the fixture project.
 
 ## Symbols & jumping
 
@@ -311,7 +367,9 @@ src/viewer/rail.js         Layers rail v2 state: selection/expanded/solo/focus +
 src/viewer/resize.js       rail / right-column drag-to-resize (pure clamp + DOM wiring)
 src/viewer/nav.js          jump + history stack (pure where possible)
 src/viewer/solo.js         legacy layer/namespace solo-id logic (pure)
-src/viewer/selection.js    per-mark selection logic (pure)
+src/viewer/selection.js    per-mark selection logic (pure), incl. isDefaultOff(layer)
+src/viewer/effects.js      effects.* tooltip text (pure): effectLabel, titleForSegment
+src/viewer/verdicts.js     per-method verdict badges/tooltip/lookup (pure)
 src/viewer/scenes.js       presentation (Scenes) pure list logic (add/move/rename/parse/…)
 src/viewer/scenes-panel.js Scenes panel DOM
 src/viewer/calltree-rows.js Call Tree: call-tree node -> display tree + flat row index (pure)

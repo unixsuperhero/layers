@@ -47,6 +47,18 @@ presentation + selection + UI state, see [docs/CONTRACT.md](docs/CONTRACT.md) "B
   `examples/example-ruby.layers-bundle.json` (`npm run example-bundle` regenerates it).
 - **Export** — download the current project + view as a `.layers-bundle.json`.
 
+## Side effects & verdicts (docs/ROUND-4.md)
+
+Static side-effect analysis adds `effects.state`/`.global`/`.args`/`.io`/`.control`/
+`.calls`/`.unknown` layers and `defs.constants`, plus a per-method `verdict` (`impure` /
+`pure` / `unknown`, with its `direct` effect kinds and `via` callees) stored on each
+`defs.methods` mark's `data.effects`. In the viewer: `effects.*` layers are off by default
+(like `exec.*`), rendered with a tinted background plus a wavy underline in the layer's own
+colour, and a hover tooltip built from the mark's data. Method group headers, `defs.methods`
+rows, Call Tree rows, and the Symbol panel all show a `●`/`○`/`?` verdict badge; each file's
+rail accordion has a compact `all | impure | pure | unknown` filter. See
+[docs/VIEWER.md](docs/VIEWER.md) "Effects & verdicts" for the module breakdown.
+
 ## Later phases
 
 2. Ruby Coverage → `exec.branches`
