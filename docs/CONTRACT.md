@@ -51,6 +51,9 @@ Formal schema: `schema/layers.schema.json` (draft-07).
 // validate.js
 validate(doc) → { ok: boolean, errors: [{ path: "/layers/0/marks/3", message: "…" }] }
 //   JSON Schema (ajv) first; semantic rules 1–5 only if the schema passes.
+//   Node-only (reads the schema from disk). In the browser use:
+// validate-core.js
+createValidator(schema) → validate     // browser-safe; the viewer imports the schema JSON via Vite
 
 // merge.js
 merge(docs: doc[]) → doc
