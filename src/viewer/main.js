@@ -4,8 +4,9 @@ import { createNav, decideJump } from "./nav.js";
 import { assignPalette } from "./palette.js";
 import { marksAtPosition, innermostSymbol } from "./marks-at.js";
 import { diffLocals } from "./locals-diff.js";
-import { layersForSolo, cycleSolo } from "./solo.js";
-import { markKey, defaultSelection, setKeys, pruneSelection } from "./selection.js";
+import { markKey, setKeys } from "./selection.js";
+import { createRail } from "./rail.js";
+import { wireRailResize } from "./resize.js";
 import { addScene, duplicateScene, moveScene, renameScene, updateScene, removeScene, cycleScene, parsePresentation } from "./scenes.js";
 import { createScenesPanel } from "./scenes-panel.js";
 import { flatten } from "../core/flatten.js";
@@ -15,7 +16,7 @@ import {
   wireRightSections,
   renderFileList,
   renderFileTabs,
-  renderLayerPanel,
+  renderRailPanel,
   renderSymbolPanel,
   renderStepperPanel,
   layerStylesheet,
@@ -23,23 +24,7 @@ import {
 
 const DEFAULT_PROJECT = "fixtures/example-ruby";
 
-const storageKey = (projectDir) => `layers:${projectDir}:selection`;
 const presentationStorageKey = (projectDir) => `layers:${projectDir}:presentation`;
-
-function loadStoredSelection(projectDir, doc) {
-  try {
-    const raw = localStorage.getItem(storageKey(projectDir));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return {
-      selection: pruneSelection(new Set(parsed.selection ?? []), doc),
-      expandedLayers: new Set(parsed.expandedLayers ?? []),
-      expandedItems: new Set(parsed.expandedItems ?? []),
-    };
-  } catch {
-    return null;
-  }
-}
 
 function loadStoredPresentation(projectDir, doc) {
   try {
@@ -118,6 +103,7 @@ function boot(
   requestedFile,
   requestedI,
   requestedSolo,
+  requestedFocus,
   initialPresentation,
   requestedScene,
 ) {
@@ -132,21 +118,10 @@ function boot(
     for (const mark of layer.marks) marksByKey.set(markKey(layer.id, mark), { ...mark, layer: layer.id });
   }
 
-  const stored = loadStoredSelection(projectDir, doc);
-  let selection = stored ? stored.selection : defaultSelection(doc);
-  let expandedLayers = stored ? stored.expandedLayers : new Set();
-  let expandedItems = stored ? stored.expandedItems : new Set();
+  const initialFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
+  const rail = createRail(projectDir, doc, initialFile);
 
-  function persist() {
-    try {
-      localStorage.setItem(
-        storageKey(projectDir),
-        JSON.stringify({ selection: [...selection], expandedLayers: [...expandedLayers], expandedItems: [...expandedItems] }),
-      );
-    } catch {
-      // ignore (private browsing, quota, etc.)
-    }
-  }
+  wireRailResize(document.documentElement, { railHandle: layout.railResizeEl, rightHandle: layout.rightResizeEl }, projectDir);
 
   let presentation = initialPresentation;
   let scenesMessage = null;
@@ -160,14 +135,13 @@ function boot(
     }
   }
 
-  const allLayerIds = doc.layers.map((l) => l.id);
-
   // `&scene=` takes precedence over `&solo=` (docs/SELECTION-AND-SCENES.md Part B).
   const sceneIdx = requestedScene !== null ? Number(requestedScene) : null;
   let activeSceneId = Number.isInteger(sceneIdx) && presentation.scenes[sceneIdx - 1] ? presentation.scenes[sceneIdx - 1].id : null;
-  let solo = !activeSceneId && requestedSolo && layersForSolo(allLayerIds, requestedSolo).length ? requestedSolo : null;
+  if (!activeSceneId && requestedSolo) rail.setSoloId(requestedSolo);
+  if (requestedFocus === "1") rail.setFocus(true);
 
-  let activeFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
+  let activeFile = initialFile;
   if (activeSceneId) {
     const scene = presentation.scenes.find((s) => s.id === activeSceneId);
     if (scene.file && project.files.includes(scene.file)) activeFile = scene.file;
@@ -237,32 +211,47 @@ function boot(
     editor.setSelectionDecorations(ranges);
   }
 
-  // Which of a set of file-scoped marks get painted: only selected ones, unless a solo is
-  // active and none of the soloed layer(s)' marks are selected — then paint the whole
-  // soloed set instead (see docs/SELECTION-AND-SCENES.md, Part A "Painting").
-  function selectMarksToPaint(marksInFile, soloedIds) {
-    if (!soloedIds) return marksInFile.filter((m) => selection.has(m.key));
-    const inSolo = marksInFile.filter((m) => soloedIds.has(m.layer));
-    const selectedInSolo = inSolo.filter((m) => selection.has(m.key));
-    return selectedInSolo.length > 0 ? selectedInSolo : inSolo;
+  // Which of a set of file-scoped marks get painted: only selected ones, unless the
+  // override's key set intersects nothing selected (e.g. a soloed layer fully off) — then
+  // paint the whole override set instead (see docs/SELECTION-AND-SCENES.md, Part A "Painting").
+  function selectMarksToPaint(marksInFile, overrideKeys) {
+    if (!overrideKeys) return marksInFile.filter((m) => rail.selection.has(m.key));
+    const inOverride = marksInFile.filter((m) => overrideKeys.has(m.key));
+    const selectedInOverride = inOverride.filter((m) => rail.selection.has(m.key));
+    return selectedInOverride.length > 0 ? selectedInOverride : inOverride;
   }
 
-  // A scene activation is a display override exactly like solo (docs/SELECTION-AND-SCENES.md
-  // Part B): paint exactly its marks, strong-styled, dimming the rest. It never touches
-  // `selection`, and the two overrides are mutually exclusive (see setSolo / activateScene).
   function activeScene() {
     return activeSceneId ? presentation.scenes.find((s) => s.id === activeSceneId) : null;
   }
 
+  // Precedence: an active scene > a name-click solo > Focus > plain selection painting
+  // (docs/ROUND-3.md D — a solo/scene "temporarily overrides" Focus while active).
   function paintFile(file) {
     const scene = activeScene();
     const sceneKeys = scene ? new Set(scene.marks) : null;
-    const soloedIds = solo ? new Set(layersForSolo(allLayerIds, solo)) : null;
+    const soloKeys = rail.solo ? new Set(rail.solo.keys) : null;
+    const focusOn = rail.focus && !sceneKeys && !soloKeys;
 
     clickableMarks = computeClickableMarks(file);
-    const painted = sceneKeys ? clickableMarks.filter((m) => sceneKeys.has(m.key)) : selectMarksToPaint(clickableMarks, soloedIds);
+    let painted;
+    let overrideKeysForDim;
+    if (sceneKeys) {
+      painted = clickableMarks.filter((m) => sceneKeys.has(m.key));
+      overrideKeysForDim = sceneKeys;
+    } else if (soloKeys) {
+      painted = selectMarksToPaint(clickableMarks, soloKeys);
+      overrideKeysForDim = soloKeys;
+    } else if (focusOn) {
+      painted = clickableMarks.filter((m) => rail.selection.has(m.key));
+      overrideKeysForDim = rail.selection;
+    } else {
+      painted = clickableMarks.filter((m) => rail.selection.has(m.key));
+      overrideKeysForDim = null;
+    }
+    const strong = !!overrideKeysForDim;
     const segments = flatten(painted.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
-    editor.setLayerDecorations(segments, colours, !!(sceneKeys || solo));
+    editor.setLayerDecorations(segments, colours, strong);
 
     const execLayer = doc.layers.find((l) => l.id === "exec.path");
     const execMarksInFile = execLayer
@@ -275,14 +264,17 @@ function boot(
             key: markKey("exec.path", m),
           }))
       : [];
-    const execRanges = sceneKeys ? execMarksInFile.filter((m) => sceneKeys.has(m.key)) : selectMarksToPaint(execMarksInFile, soloedIds);
+    const execRanges = sceneKeys
+      ? execMarksInFile.filter((m) => sceneKeys.has(m.key))
+      : overrideKeysForDim
+        ? selectMarksToPaint(execMarksInFile, overrideKeysForDim)
+        : execMarksInFile.filter((m) => rail.selection.has(m.key));
     editor.setExecDecorations(execRanges, execRanges.length > 0);
 
     // Dim everything but the override's marks — except an override made only of exec.path
     // marks, which has no inline marks and is shown via the line highlight + dimming above.
-    const sceneOnlyExec = sceneKeys && [...sceneKeys].length > 0 && [...sceneKeys].every((k) => k.split("|")[0].startsWith("exec."));
-    const soloOnlyExec = soloedIds && [...soloedIds].every((id) => id.startsWith("exec."));
-    const dim = sceneKeys ? !sceneOnlyExec : solo && !soloOnlyExec;
+    const onlyExec = overrideKeysForDim && [...overrideKeysForDim].every((k) => k.split("|")[0].startsWith("exec."));
+    const dim = overrideKeysForDim && !onlyExec;
     editor.setSoloDim(dim ? segments.map((s) => ({ start: s.start, end: s.end })) : null);
 
     paintSelection();
@@ -314,26 +306,27 @@ function boot(
     if (activeSceneId) {
       const idx = presentation.scenes.findIndex((s) => s.id === activeSceneId);
       if (idx !== -1) params.set("scene", String(idx + 1));
-    } else if (solo) {
-      params.set("solo", solo);
+    } else if (rail.solo) {
+      params.set("solo", rail.solo.id);
     }
+    if (rail.focus) params.set("focus", "1");
     history.replaceState(null, "", `?${params.toString()}`);
   }
 
   function openFile(file) {
     activeFile = file;
+    rail.openFile(file);
     editor.openFile(file, sources[file]);
     renderTabs();
     paintFile(file);
-    renderLayers();
+    renderRail();
     syncURL();
   }
 
   function setSelection(next) {
-    selection = next;
+    rail.setSelection(next);
     paintFile(activeFile);
-    renderLayers();
-    persist();
+    renderRail();
   }
 
   function jumpToMark(key) {
@@ -345,74 +338,77 @@ function boot(
   }
 
   function resetSelection() {
-    selection = defaultSelection(doc);
-    expandedLayers = new Set();
-    expandedItems = new Set();
-    try {
-      localStorage.removeItem(storageKey(projectDir));
-    } catch {
-      // ignore
-    }
+    rail.reset();
     paintFile(activeFile);
-    renderLayers();
+    renderRail();
   }
 
-  function renderLayers() {
-    renderLayerPanel(
-      layout.layersEl,
-      { layers: doc.layers, selection, colours, solo, expandedLayers, expandedItems, activeFile, marksByKey, sources, offsets },
+  function renderRail() {
+    renderRailPanel(
+      layout.railEl,
       {
-        onToggle: (keys, on) => setSelection(setKeys(selection, keys, on)),
-        onSoloLayer: (id) => setSolo(solo === id ? null : id),
-        onSoloGroup: (ns) => {
-          const value = `${ns}.*`;
-          setSolo(solo === value ? null : value);
+        tree: rail.tree,
+        selection: rail.selection,
+        solo: rail.solo,
+        focus: rail.focus,
+        expanded: rail.expanded,
+        colours,
+        activeFile,
+        marksByKey,
+        sources,
+        offsets,
+      },
+      {
+        onToggleKeys: (keys, on) => setSelection(setKeys(rail.selection, keys, on)),
+        onToggleExpand: (id) => {
+          rail.toggleExpanded(id);
+          renderRail();
         },
-        onToggleLayerCaret: (id) => {
-          if (expandedLayers.has(id)) expandedLayers.delete(id);
-          else expandedLayers.add(id);
-          renderLayers();
-          persist();
-        },
-        onToggleItemCaret: (layerId, symbol) => {
-          const key = `${layerId}\0${symbol}`;
-          if (expandedItems.has(key)) expandedItems.delete(key);
-          else expandedItems.add(key);
-          renderLayers();
-          persist();
-        },
+        onSoloNode: (node) => setSolo(node),
         onJump: jumpToMark,
-        onReset: resetSelection,
       },
     );
+    layout.focusToggleEl.checked = rail.focus;
   }
 
-  function setSolo(value) {
-    solo = value;
-    if (value) activeSceneId = null; // solo and a scene are mutually exclusive
+  // Common refresh after anything changes which override (solo/focus) is painted.
+  function refreshOverride() {
     paintFile(activeFile);
-    renderLayers();
+    renderRail();
     renderChip();
     renderScenes();
     syncURL();
   }
 
+  // Name click on a layer/namespace-group/file/method — toggles that node as the solo, off
+  // if it is already the soloed node (docs/ROUND-3.md D).
+  function setSolo(node) {
+    rail.toggleSoloNode(node);
+    refreshOverride();
+  }
+
   function soloCycle(direction) {
-    setSolo(cycleSolo(allLayerIds, solo, direction));
+    rail.soloCycle(direction);
+    refreshOverride();
+  }
+
+  function setFocus(value) {
+    rail.setFocus(value);
+    refreshOverride();
   }
 
   // Chip above the editor: shows whichever display override (scene or solo) is active.
   function renderChip() {
     const scene = activeScene();
-    layout.soloChipEl.hidden = !scene && !solo;
-    if (!scene && !solo) return;
+    layout.soloChipEl.hidden = !scene && !rail.solo;
+    if (!scene && !rail.solo) return;
     layout.soloChipEl.innerHTML = "";
     const text = document.createElement("span");
     if (scene) {
       const idx = presentation.scenes.findIndex((s) => s.id === scene.id) + 1;
       text.textContent = `scene ${idx}/${presentation.scenes.length}: ${scene.name}`;
     } else {
-      text.textContent = `solo: ${solo}`;
+      text.textContent = `solo: ${rail.solo.label}`;
     }
     const clear = document.createElement("button");
     clear.type = "button";
@@ -426,14 +422,20 @@ function boot(
 
   // Exactly what is painted right now (selection, or the solo override) across ALL files —
   // the capture used by "+ from view" and "⟲ update" (docs/SELECTION-AND-SCENES.md Part B).
+  // Generalized for any solo node: grouped by real layer id (as encoded in each markKey),
+  // "selected ones, else the whole layer" per group — the project-wide analogue of a
+  // per-file solo fallback (docs/VIEWER.md "Deviations").
   function currentPaintedKeys() {
-    if (!solo) return [...selection];
-    const soloedIds = new Set(layersForSolo(allLayerIds, solo));
+    if (!rail.solo) return [...rail.selection];
+    const byLayer = new Map();
+    for (const key of rail.solo.keys) {
+      const layerId = key.split("|")[0];
+      if (!byLayer.has(layerId)) byLayer.set(layerId, []);
+      byLayer.get(layerId).push(key);
+    }
     const keys = [];
-    for (const layer of doc.layers) {
-      if (!soloedIds.has(layer.id)) continue;
-      const layerKeys = layer.marks.map((m) => markKey(layer.id, m));
-      const selected = layerKeys.filter((k) => selection.has(k));
+    for (const layerKeys of byLayer.values()) {
+      const selected = layerKeys.filter((k) => rail.selection.has(k));
       keys.push(...(selected.length > 0 ? selected : layerKeys));
     }
     return keys;
@@ -504,16 +506,17 @@ function boot(
   function activateScene(id) {
     const scene = id ? presentation.scenes.find((s) => s.id === id) : null;
     activeSceneId = scene ? scene.id : null;
-    if (scene) solo = null;
+    if (scene) rail.setSoloNode(null);
 
     const nextFile = scene?.file && project.files.includes(scene.file) ? scene.file : activeFile;
     if (nextFile !== activeFile) {
       activeFile = nextFile;
+      rail.openFile(activeFile);
       editor.openFile(activeFile, sources[activeFile]);
       renderTabs();
     }
     paintFile(activeFile);
-    renderLayers();
+    renderRail();
     renderChip();
     renderScenes();
     if (scene && scene.step !== null && stepper) gotoStepper(scene.step);
@@ -538,7 +541,7 @@ function boot(
         scenesMessage = { type: "error", text: err.message };
       }
       paintFile(activeFile);
-      renderLayers();
+      renderRail();
       renderChip();
       renderScenes();
       syncURL();
@@ -691,6 +694,12 @@ function boot(
     return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
   }
 
+  layout.focusToggleEl.addEventListener("change", () => setFocus(layout.focusToggleEl.checked));
+  layout.railResetEl.addEventListener("click", (event) => {
+    event.preventDefault();
+    resetSelection();
+  });
+
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       activateScene(null);
@@ -719,6 +728,10 @@ function boot(
       else soloCycle(-1);
       return;
     }
+    if (event.key === "f") {
+      setFocus(!rail.focus);
+      return;
+    }
     if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && activeSceneId) {
       event.preventDefault();
       const idx = presentation.scenes.findIndex((s) => s.id === activeSceneId);
@@ -736,7 +749,7 @@ function boot(
   layout.backBtn.addEventListener("click", () => nav.back());
   layout.forwardBtn.addEventListener("click", () => nav.forward());
 
-  renderLayers();
+  renderRail();
   openFile(activeFile);
   selectSymbol(null);
   renderChip();
@@ -762,15 +775,18 @@ function boot(
         return selectedSymbol;
       },
       get solo() {
-        return solo;
+        return rail.solo;
+      },
+      get focus() {
+        return rail.focus;
       },
       get selection() {
-        return [...selection];
+        return [...rail.selection];
       },
       // Derived: true when ANY mark of the layer is selected (kept for existing callers).
       get layerState() {
         const result = {};
-        for (const layer of doc.layers) result[layer.id] = layer.marks.some((m) => selection.has(markKey(layer.id, m)));
+        for (const layer of doc.layers) result[layer.id] = layer.marks.some((m) => rail.selection.has(markKey(layer.id, m)));
         return result;
       },
     },
@@ -778,13 +794,17 @@ function boot(
     toggleLayer(id, on) {
       const layer = doc.layers.find((l) => l.id === id);
       if (!layer) return;
-      setSelection(setKeys(selection, layer.marks.map((m) => markKey(id, m)), on));
+      setSelection(setKeys(rail.selection, layer.marks.map((m) => markKey(id, m)), on));
     },
-    setMarks: (keys, on) => setSelection(setKeys(selection, keys, on)),
+    setMarks: (keys, on) => setSelection(setKeys(rail.selection, keys, on)),
     resetSelection,
     selectSymbol,
     jumpToSymbol,
-    solo: (idOrNull) => setSolo(idOrNull),
+    solo: (idOrNull) => {
+      rail.setSoloId(idOrNull);
+      refreshOverride();
+    },
+    focus: (value) => setFocus(!!value),
     back: () => nav.back(),
     forward: () => nav.forward(),
     stepper: stepper && {
@@ -835,7 +855,17 @@ async function main() {
 
   const presentation = await loadInitialPresentation(projectDir, result.doc);
 
-  boot(app, projectDir, result, params.get("file"), params.get("i"), params.get("solo"), presentation, params.get("scene"));
+  boot(
+    app,
+    projectDir,
+    result,
+    params.get("file"),
+    params.get("i"),
+    params.get("solo"),
+    params.get("focus"),
+    presentation,
+    params.get("scene"),
+  );
 }
 
 main();

@@ -1,23 +1,32 @@
 import { lineOfOffset } from "./marks-at.js";
-import { matchesSolo } from "./solo.js";
-import { itemsOfLayer, checkState, markKey } from "./selection.js";
+import { itemsOfLayer, checkState } from "./selection.js";
 
 export function buildLayout(app) {
   app.innerHTML = `
     <div class="layout">
-      <div class="col col-left">
+      <div class="col col-left" id="col-left">
         <div class="nav-toolbar">
           <button id="nav-back" type="button" title="Back (Alt+Left)">&larr;</button>
           <button id="nav-forward" type="button" title="Forward (Alt+Right)">&rarr;</button>
         </div>
         <div class="file-list" id="file-list"></div>
-        <div class="layer-panel" id="layer-panel"></div>
+        <div class="rail-header" id="rail-header">
+          <h2>Layers</h2>
+          <label class="focus-toggle" id="focus-toggle-label" title="Focus (f): paint the ticked selection strongly, dim the rest">
+            <input type="checkbox" id="focus-toggle" />
+            Focus
+          </label>
+          <a href="#" class="layer-reset" id="rail-reset">reset</a>
+        </div>
+        <div class="rail-panel" id="rail-panel"></div>
       </div>
+      <div class="col-resize" id="rail-resize" title="Drag to resize (double-click to reset)"></div>
       <div class="col col-center">
         <div class="file-tabs" id="file-tabs"></div>
         <div class="solo-chip" id="solo-chip" hidden></div>
         <div class="editor-host" id="editor-host"></div>
       </div>
+      <div class="col-resize" id="right-resize" title="Drag to resize (double-click to reset)"></div>
       <div class="col col-right">
         <section class="right-section" data-section="scenes">
           <div class="right-section-header"><h2>Scenes</h2></div>
@@ -36,7 +45,12 @@ export function buildLayout(app) {
   `;
   return {
     fileListEl: app.querySelector("#file-list"),
-    layersEl: app.querySelector("#layer-panel"),
+    railEl: app.querySelector("#rail-panel"),
+    focusToggleEl: app.querySelector("#focus-toggle"),
+    railResetEl: app.querySelector("#rail-reset"),
+    railResizeEl: app.querySelector("#rail-resize"),
+    rightResizeEl: app.querySelector("#right-resize"),
+    colLeftEl: app.querySelector("#col-left"),
     fileTabsEl: app.querySelector("#file-tabs"),
     editorEl: app.querySelector("#editor-host"),
     soloChipEl: app.querySelector("#solo-chip"),
@@ -103,16 +117,6 @@ export function renderFileTabs(container, files, activeFile, onSelect) {
   }
 }
 
-function groupByNamespace(layers) {
-  const groups = new Map();
-  for (const layer of layers) {
-    const ns = layer.id.split(".")[0];
-    if (!groups.has(ns)) groups.set(ns, []);
-    groups.get(ns).push(layer);
-  }
-  return groups;
-}
-
 function countOn(selection, keys) {
   return keys.filter((k) => selection.has(k)).length;
 }
@@ -125,6 +129,11 @@ function formatCount(state, on, total, prefix) {
 
 function markLine(mark, sources, offsets) {
   return lineOfOffset(sources[mark.file], offsets[mark.file].byteToChar(mark.start));
+}
+
+function sourceLineText(mark, sources, offsets) {
+  const line = markLine(mark, sources, offsets);
+  return (sources[mark.file].split("\n")[line - 1] ?? "").trim();
 }
 
 // Which mark a click on an item's label jumps to: its definition, else its first write,
@@ -148,7 +157,7 @@ function renderMarkRow(key, ctx, handlers) {
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.checked = selection.has(key);
-  cb.addEventListener("change", () => handlers.onToggle([key], cb.checked));
+  cb.addEventListener("change", () => handlers.onToggleKeys([key], cb.checked));
 
   const label = document.createElement("span");
   label.className = "mark-label";
@@ -161,14 +170,18 @@ function renderMarkRow(key, ctx, handlers) {
   return row;
 }
 
-function renderItemRow(layer, item, ctx, handlers) {
-  const { selection, expandedItems, activeFile, marksByKey, sources, offsets } = ctx;
+// node: the layer node this item belongs to (used to scope the item's expand-id uniquely
+// per accordion location). shortLabels: true inside a method group — show the name after
+// the last separator, full symbol only in the tooltip (docs/ROUND-3.md D).
+function renderItemRow(node, item, ctx, handlers, shortLabels) {
+  const { selection, expanded, activeFile, marksByKey, sources, offsets } = ctx;
   const state = checkState(selection, item.marks);
   const multi = item.marks.length > 1;
-  const itemId = `${layer.id}\0${item.symbol}`;
-  const expanded = multi && expandedItems.has(itemId);
+  const itemId = `${node.id}\0item\0${item.symbol ?? item.marks[0]}`;
+  const expandedItem = multi && expanded.has(itemId);
   const inFile = item.marks.some((k) => marksByKey.get(k).file === activeFile);
   const firstMark = marksByKey.get(item.marks[0]);
+  const isExec = node.layerId === "exec.path";
 
   const row = document.createElement("div");
   row.className = "item-row" + (state === "some" ? " partial" : "") + (inFile ? "" : " dim");
@@ -178,29 +191,38 @@ function renderItemRow(layer, item, ctx, handlers) {
   caret.className = "tree-caret" + (multi ? "" : " empty");
   caret.disabled = !multi;
   if (multi) {
-    caret.textContent = expanded ? "▾" : "▸";
-    caret.addEventListener("click", () => handlers.onToggleItemCaret(layer.id, item.symbol));
+    caret.textContent = expandedItem ? "▾" : "▸";
+    caret.addEventListener("click", () => handlers.onToggleExpand(itemId));
   }
 
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.checked = state === "all";
   cb.indeterminate = state === "some";
-  cb.addEventListener("change", () => handlers.onToggle(item.marks, cb.checked));
+  cb.addEventListener("change", () => handlers.onToggleKeys(item.marks, cb.checked));
 
   const label = document.createElement("span");
   label.className = "item-label";
-  const labelText = item.symbol ?? firstMark.role;
-  // "Invoice#summary/total" → dim shrinkable prefix "Invoice#summary/" + the name "total", which never truncates
-  const cut = Math.max(labelText.lastIndexOf("#"), labelText.lastIndexOf("/")) + 1;
-  const prefix = document.createElement("span");
-  prefix.className = "item-prefix";
-  prefix.textContent = labelText.slice(0, cut);
-  const name = document.createElement("span");
-  name.className = "item-name";
-  name.textContent = labelText.slice(cut);
-  label.append(prefix, name);
-  label.title = labelText;
+  const fullLabel = item.symbol ?? firstMark.role;
+  const labelText = isExec ? sourceLineText(firstMark, sources, offsets) : fullLabel;
+  if (shortLabels && !isExec && item.symbol) {
+    const cut = Math.max(item.symbol.lastIndexOf("#"), item.symbol.lastIndexOf("."), item.symbol.lastIndexOf("/")) + 1;
+    const name = document.createElement("span");
+    name.className = "item-name";
+    name.textContent = item.symbol.slice(cut);
+    label.appendChild(name);
+  } else {
+    // "Invoice#summary/total" → dim shrinkable prefix "Invoice#summary/" + the name "total"
+    const cut = Math.max(labelText.lastIndexOf("#"), labelText.lastIndexOf("/")) + 1;
+    const prefix = document.createElement("span");
+    prefix.className = "item-prefix";
+    prefix.textContent = labelText.slice(0, cut);
+    const name = document.createElement("span");
+    name.className = "item-name";
+    name.textContent = labelText.slice(cut);
+    label.append(prefix, name);
+  }
+  label.title = fullLabel;
   label.addEventListener("click", () => handlers.onJump(jumpTargetKey(item, marksByKey)));
 
   const meta = document.createElement("span");
@@ -215,7 +237,7 @@ function renderItemRow(layer, item, ctx, handlers) {
   wrap.className = "item-block";
   wrap.appendChild(row);
 
-  if (expanded) {
+  if (expandedItem) {
     const marksEl = document.createElement("div");
     marksEl.className = "item-marks";
     for (const key of item.marks) marksEl.appendChild(renderMarkRow(key, ctx, handlers));
@@ -225,49 +247,58 @@ function renderItemRow(layer, item, ctx, handlers) {
   return wrap;
 }
 
-function renderLayerRow(layer, ctx, handlers) {
-  const { selection, colours, solo, expandedLayers } = ctx;
-  const items = itemsOfLayer(layer);
-  const layerKeys = layer.marks.map((m) => markKey(layer.id, m));
-  const state = checkState(selection, layerKeys);
-  const isSoloed = matchesSolo(layer.id, solo);
-  const expanded = expandedLayers.has(layer.id);
+// node: a rail-tree "layer" node ({ id, layerId, label, title, keys, marks }). Renders the
+// same layer row + expand-to-items UI at every level of the rail (ALL FILES, Whole file,
+// a method group, the top-level bucket) — only the mark list behind it differs.
+function renderLayerRow(node, ctx, handlers) {
+  const { selection, solo, expanded, colours } = ctx;
+  const items = itemsOfLayer({ id: node.layerId, marks: node.marks });
+  const state = checkState(selection, node.keys);
+  const isSoloed = solo?.id === node.id;
+  const isOpen = expanded.has(node.id);
+  const shortLabels = node.id.includes("/scope/");
 
   const row = document.createElement("div");
   row.className = "layer-row" + (isSoloed ? " solo" : "") + (state === "some" ? " partial" : "");
-  row.dataset.layerId = layer.id;
+  row.dataset.layerId = node.layerId;
+  row.dataset.nodeId = node.id;
+
+  const pin = document.createElement("span");
+  pin.className = "row-pin";
 
   const caret = document.createElement("button");
   caret.type = "button";
   caret.className = "tree-caret" + (items.length ? "" : " empty");
   caret.disabled = !items.length;
   if (items.length) {
-    caret.textContent = expanded ? "▾" : "▸";
-    caret.addEventListener("click", () => handlers.onToggleLayerCaret(layer.id));
+    caret.textContent = isOpen ? "▾" : "▸";
+    caret.addEventListener("click", () => handlers.onToggleExpand(node.id));
   }
 
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.checked = state === "all";
   cb.indeterminate = state === "some";
-  cb.addEventListener("change", () => handlers.onToggle(layerKeys, cb.checked));
+  cb.addEventListener("change", () => handlers.onToggleKeys(node.keys, cb.checked));
 
   const swatch = document.createElement("span");
   swatch.className = "layer-swatch";
-  swatch.style.backgroundColor = colours[layer.id];
-  swatch.addEventListener("click", () => handlers.onSoloLayer(layer.id));
+  swatch.style.backgroundColor = colours[node.layerId];
+  swatch.addEventListener("click", () => handlers.onSoloNode(node));
+
+  pin.append(caret, cb, swatch);
 
   const label = document.createElement("span");
   label.className = "layer-id";
-  label.textContent = layer.id;
-  label.title = layer.id;
-  label.addEventListener("click", () => handlers.onSoloLayer(layer.id));
+  label.textContent = node.label;
+  label.title = node.title ?? node.label;
+  label.addEventListener("click", () => handlers.onSoloNode(node));
 
   const count = document.createElement("span");
   count.className = "layer-count";
-  count.textContent = formatCount(state, countOn(selection, layerKeys), layerKeys.length, "");
+  count.textContent = formatCount(state, countOn(selection, node.keys), node.keys.length, "");
 
-  row.append(caret, cb, swatch, label, count);
+  row.append(pin, label, count);
   if (isSoloed) {
     const badge = document.createElement("span");
     badge.className = "solo-badge";
@@ -279,71 +310,134 @@ function renderLayerRow(layer, ctx, handlers) {
   wrap.className = "layer-block";
   wrap.appendChild(row);
 
-  if (expanded && items.length) {
+  if (isOpen && items.length) {
     const itemsEl = document.createElement("div");
     itemsEl.className = "layer-items";
-    for (const item of items) itemsEl.appendChild(renderItemRow(layer, item, ctx, handlers));
+    for (const item of items) itemsEl.appendChild(renderItemRow(node, item, ctx, handlers, shortLabels));
     wrap.appendChild(itemsEl);
   }
 
   return wrap;
 }
 
-// ctx: { layers, selection, colours, solo, expandedLayers, expandedItems, activeFile,
-//        marksByKey, sources, offsets }. handlers: { onToggle(keys, on), onSoloLayer(id),
-// onSoloGroup(ns), onToggleLayerCaret(id), onToggleItemCaret(layerId, symbol), onJump(key),
-// onReset() }.
-export function renderLayerPanel(container, ctx, handlers) {
-  const { layers, selection, solo } = ctx;
-  container.innerHTML = "";
+// Generic accordion header shared by every rail level (ALL FILES, namespace group, file,
+// Whole file, method, top level). `solomable` controls whether the name click solos the
+// node — layers/namespace-groups/files/methods are; the ALL FILES root itself is not.
+function accordionHeader(node, level, ctx, handlers, solomable) {
+  const { selection, solo, expanded } = ctx;
+  const isOpen = expanded.has(node.id);
+  const state = checkState(selection, node.keys);
+  const isSoloed = solo?.id === node.id;
 
   const header = document.createElement("div");
-  header.className = "layer-panel-header";
-  const h = document.createElement("h2");
-  h.textContent = "Layers";
-  const reset = document.createElement("a");
-  reset.href = "#";
-  reset.className = "layer-reset";
-  reset.textContent = "reset";
-  reset.addEventListener("click", (event) => {
-    event.preventDefault();
-    handlers.onReset();
-  });
-  header.append(h, reset);
-  container.appendChild(header);
+  header.className = `rail-accordion-header level-${level}` + (isSoloed ? " solo" : "") + (state === "some" ? " partial" : "");
+  header.dataset.nodeId = node.id;
 
-  for (const [ns, group] of groupByNamespace(layers)) {
-    const groupEl = document.createElement("div");
-    groupEl.className = "layer-group";
+  const pin = document.createElement("span");
+  pin.className = "row-pin";
 
-    const groupKeys = group.flatMap((l) => l.marks.map((m) => markKey(l.id, m)));
-    const groupState = checkState(selection, groupKeys);
-    const groupSolo = `${ns}.*`;
-    const groupIsSoloed = solo === groupSolo;
-
-    const groupHeader = document.createElement("div");
-    groupHeader.className = "layer-group-header" + (groupIsSoloed ? " solo" : "");
-    const groupCb = document.createElement("input");
-    groupCb.type = "checkbox";
-    groupCb.checked = groupState === "all";
-    groupCb.indeterminate = groupState === "some";
-    groupCb.addEventListener("change", () => handlers.onToggle(groupKeys, groupCb.checked));
-    const groupName = document.createElement("span");
-    groupName.className = "layer-group-name";
-    groupName.textContent = groupSolo;
-    groupName.addEventListener("click", () => handlers.onSoloGroup(ns));
-    groupHeader.append(groupCb, groupName);
-    if (groupIsSoloed) {
-      const badge = document.createElement("span");
-      badge.className = "solo-badge";
-      badge.textContent = "solo";
-      groupHeader.appendChild(badge);
-    }
-    groupEl.appendChild(groupHeader);
-
-    for (const layer of group) groupEl.appendChild(renderLayerRow(layer, ctx, handlers));
-    container.appendChild(groupEl);
+  const caret = document.createElement("button");
+  caret.type = "button";
+  caret.className = "tree-caret" + (node.children.length ? "" : " empty");
+  caret.disabled = !node.children.length;
+  if (node.children.length) {
+    caret.textContent = isOpen ? "▾" : "▸";
+    caret.addEventListener("click", () => handlers.onToggleExpand(node.id));
   }
+
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = state === "all";
+  cb.indeterminate = state === "some";
+  cb.disabled = node.keys.length === 0;
+  cb.addEventListener("change", () => handlers.onToggleKeys(node.keys, cb.checked));
+
+  pin.append(caret, cb);
+
+  const name = document.createElement("span");
+  name.className = "rail-accordion-name";
+  name.textContent = node.label;
+  name.title = node.title ?? node.label;
+  if (solomable) name.addEventListener("click", () => handlers.onSoloNode(node));
+
+  const count = document.createElement("span");
+  count.className = "rail-accordion-count";
+  count.textContent = formatCount(state, countOn(selection, node.keys), node.keys.length, "");
+
+  header.append(pin, name, count);
+  if (isSoloed) {
+    const badge = document.createElement("span");
+    badge.className = "solo-badge";
+    badge.textContent = "solo";
+    header.appendChild(badge);
+  }
+  return { header, isOpen };
+}
+
+function renderNamespaceGroup(nsNode, ctx, handlers) {
+  const { header, isOpen } = accordionHeader(nsNode, "namespace", ctx, handlers, true);
+  const wrap = document.createElement("div");
+  wrap.className = "rail-accordion";
+  wrap.appendChild(header);
+  if (isOpen) {
+    const body = document.createElement("div");
+    body.className = "rail-accordion-body layer-list";
+    for (const layer of nsNode.children) body.appendChild(renderLayerRow(layer, ctx, handlers));
+    wrap.appendChild(body);
+  }
+  return wrap;
+}
+
+function renderAllFilesAccordion(allNode, ctx, handlers) {
+  const { header, isOpen } = accordionHeader(allNode, "all", ctx, handlers, false);
+  const wrap = document.createElement("div");
+  wrap.className = "rail-accordion";
+  wrap.appendChild(header);
+  if (isOpen) {
+    const body = document.createElement("div");
+    body.className = "rail-accordion-body";
+    for (const ns of allNode.children) body.appendChild(renderNamespaceGroup(ns, ctx, handlers));
+    wrap.appendChild(body);
+  }
+  return wrap;
+}
+
+function renderGroupAccordion(node, level, ctx, handlers) {
+  const { header, isOpen } = accordionHeader(node, level, ctx, handlers, level !== "whole-file");
+  const wrap = document.createElement("div");
+  wrap.className = "rail-accordion";
+  wrap.appendChild(header);
+  if (isOpen) {
+    const body = document.createElement("div");
+    body.className = "rail-accordion-body layer-list";
+    for (const layer of node.children) body.appendChild(renderLayerRow(layer, ctx, handlers));
+    wrap.appendChild(body);
+  }
+  return wrap;
+}
+
+function renderFileAccordion(fileNode, ctx, handlers) {
+  const { header, isOpen } = accordionHeader(fileNode, "file", ctx, handlers, true);
+  const wrap = document.createElement("div");
+  wrap.className = "rail-accordion";
+  wrap.appendChild(header);
+  if (isOpen) {
+    const body = document.createElement("div");
+    body.className = "rail-accordion-body";
+    for (const child of fileNode.children) body.appendChild(renderGroupAccordion(child, child.kind, ctx, handlers));
+    wrap.appendChild(body);
+  }
+  return wrap;
+}
+
+// ctx: { tree, selection, solo, focus, expanded, colours, activeFile, marksByKey, sources,
+// offsets }. handlers: { onToggleKeys(keys, on), onToggleExpand(id), onSoloNode(node),
+// onJump(key), onReset() }.
+export function renderRailPanel(container, ctx, handlers) {
+  container.innerHTML = "";
+  const [allNode, ...fileNodes] = ctx.tree.root.children;
+  container.appendChild(renderAllFilesAccordion(allNode, ctx, handlers));
+  for (const fileNode of fileNodes) container.appendChild(renderFileAccordion(fileNode, ctx, handlers));
 }
 
 // Injects only the colour: `.lyr-<id> { --lyr: #… }`, sorted so the cascade consistently
