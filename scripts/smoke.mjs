@@ -511,6 +511,194 @@ try {
   const unselectedTokenClickable = await page.evaluate(() => window.__layers.state.selectedSymbol);
   check("an unselected token is still clickable (selects its symbol)", unselectedTokenClickable === "Invoice#overdue?");
 
+  // --- Scenes ---
+  // Fresh reload with cleared localStorage: the presentation key has never been written by
+  // the steps above, but clearing everything gives a true blank slate for the empty-list
+  // ]/[ assertion below.
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
+  check("Scenes panel is visible", await page.locator("#scenes-panel").isVisible());
+  const firstRightSection = await page.locator(".col-right .right-section").first().getAttribute("data-section");
+  check("Scenes panel is the first (top) section in the right column", firstRightSection === "scenes");
+
+  check("scenes list starts empty", (await page.evaluate(() => window.__layers.scenes.list())).length === 0);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press("]");
+  const soloWithEmptyScenes = await page.evaluate(() => window.__layers.state.solo);
+  check('with an empty scene list, "]" still solos a layer', soloWithEmptyScenes !== null);
+  await page.evaluate(() => window.__layers.solo(null));
+
+  // addFromView with defs.methods soloed creates scene 1 with exactly 5 mark keys
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+  await page.evaluate(() => window.__layers.solo("defs.methods"));
+  await page.evaluate(() => window.__layers.scenes.addFromView("The two classes", { pinStep: false }));
+  await page.evaluate(() => window.__layers.solo(null));
+  const scene1 = (await page.evaluate(() => window.__layers.scenes.list()))[0];
+  check("addFromView with defs.methods soloed creates scene 1 with exactly 5 mark keys", scene1.marks.length === 5);
+
+  // second scene from a partial selection (setMarks)
+  await page.evaluate(() => {
+    for (const id of Object.keys(window.__layers.state.layerState)) window.__layers.toggleLayer(id, false);
+  });
+  const partialKeys = ["vars.locals|invoice.rb|159|164", "vars.locals|invoice.rb|200|205"];
+  await page.evaluate((keys) => window.__layers.setMarks(keys, true), partialKeys);
+  await page.evaluate(() => window.__layers.scenes.addFromView("partial selection", { pinStep: false }));
+  const scene2 = (await page.evaluate(() => window.__layers.scenes.list()))[1];
+  check("scene 2 built from a partial selection has exactly the selected marks", JSON.stringify([...scene2.marks].sort()) === JSON.stringify([...partialKeys].sort()));
+
+  // third scene with pinStep at stepper cursor 14
+  await page.evaluate(() => window.__layers.resetSelection());
+  await page.evaluate(() => window.__layers.stepper.goto(14));
+  await page.evaluate(() => window.__layers.scenes.addFromView("step14", { pinStep: true }));
+  const scene3 = (await page.evaluate(() => window.__layers.scenes.list()))[2];
+  check("scene 3 has a pinned step of 14", scene3.step === 14);
+
+  // activating scene 1 (real click) paints exactly N lyr-solo tokens in invoice.rb, computed
+  // from the data itself, and leaves state.selection unchanged
+  const expectedScene1Count = await page.evaluate(() => {
+    const layer = window.__layers.state.doc.layers.find((l) => l.id === "defs.methods");
+    return layer.marks.filter((m) => m.file === "invoice.rb").length;
+  });
+  const selectionBeforeActivate = await page.evaluate(() => [...window.__layers.state.selection].sort());
+  await page.locator(".scene-row .scene-name", { hasText: "The two classes" }).click();
+  await page.waitForTimeout(350); // past the click/dblclick disambiguation window
+  const soloTokenCount = await page.locator(".lyr-solo").count();
+  check("activating scene 1 paints exactly the expected number of lyr-solo tokens in invoice.rb", soloTokenCount === expectedScene1Count);
+  const selectionAfterActivate = await page.evaluate(() => [...window.__layers.state.selection].sort());
+  check("activating a scene leaves state.selection unchanged", JSON.stringify(selectionAfterActivate) === JSON.stringify(selectionBeforeActivate));
+
+  const chipText1 = await page.locator("#solo-chip").textContent();
+  check('chip text matches "scene 1/3: …"', chipText1.startsWith("scene 1/3:"));
+
+  // real "]" goes 1 -> 2 -> 3 -> 1 (wraps); "[" goes back
+  const sceneIds = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press("]");
+  check("real ] moves scene 1 -> 2", (await page.evaluate(() => window.__layers.scenes.activeId)) === sceneIds[1]);
+  await page.keyboard.press("]");
+  check("real ] moves scene 2 -> 3", (await page.evaluate(() => window.__layers.scenes.activeId)) === sceneIds[2]);
+  await page.keyboard.press("]");
+  check("real ] wraps scene 3 -> 1", (await page.evaluate(() => window.__layers.scenes.activeId)) === sceneIds[0]);
+  await page.keyboard.press("[");
+  check("real [ wraps scene 1 -> 3", (await page.evaluate(() => window.__layers.scenes.activeId)) === sceneIds[2]);
+
+  // activating scene 3 (reached above via [) moves the stepper cursor to 14 and shows the
+  // current-statement decoration
+  check("activating scene 3 moves the stepper cursor to 14", (await page.evaluate(() => window.__layers.stepper.cursor)) === 14);
+  check("activating scene 3 shows the current-statement decoration", (await page.locator(".step-current").count()) > 0);
+
+  await page.keyboard.press("Escape");
+  check("Escape deactivates the active scene", (await page.evaluate(() => window.__layers.scenes.activeId)) === null);
+
+  // duplicate -> list length 4, copy sits right after the original with " copy"
+  await page
+    .locator(".scene-row", { has: page.locator(".scene-name", { hasText: "The two classes" }) })
+    .locator(".scene-dup")
+    .click();
+  const afterDup = await page.evaluate(() => window.__layers.scenes.list());
+  check("duplicate makes the list length 4", afterDup.length === 4);
+  check('the copy sits right after the original with " copy" appended', afterDup[1].name === "The two classes copy");
+
+  // real double-click rename + Enter changes the name
+  await page.locator(".scene-row .scene-name", { hasText: "The two classes copy" }).dblclick();
+  await page.waitForTimeout(350);
+  await page.keyboard.type("Renamed scene");
+  await page.keyboard.press("Enter");
+  const afterRename = await page.evaluate(() => window.__layers.scenes.list());
+  check("real double-click + Enter renames the scene", afterRename[1].name === "Renamed scene");
+
+  // move(id, 0) reorders; real Alt+ArrowDown moves the active scene down one
+  const idsBeforeMove = afterRename.map((s) => s.id);
+  const lastSceneId = idsBeforeMove[idsBeforeMove.length - 1];
+  await page.evaluate((id) => window.__layers.scenes.move(id, 0), lastSceneId);
+  const idsAfterMove = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  check("move(id, 0) reorders the scene to the front", idsAfterMove[0] === lastSceneId);
+
+  await page.evaluate((id) => window.__layers.scenes.activate(id), lastSceneId);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press("Alt+ArrowDown");
+  const idsAfterAltDown = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  check("real Alt+ArrowDown moves the active scene down one", idsAfterAltDown[1] === lastSceneId && idsAfterAltDown[0] !== lastSceneId);
+  await page.evaluate(() => window.__layers.scenes.activate(null));
+
+  // ⇤ load sets selection to the scene's marks
+  const loadTarget = (await page.evaluate(() => window.__layers.scenes.list()))[0];
+  await page.locator(".scene-row").first().locator(".scene-load").click();
+  const selectionAfterLoad = await page.evaluate(() => [...window.__layers.state.selection].sort());
+  check("⇤ load sets selection to the scene's marks", JSON.stringify(selectionAfterLoad) === JSON.stringify([...loadTarget.marks].sort()));
+
+  // ⟲ update overwrites marks with the current view
+  await page.evaluate(() => window.__layers.resetSelection());
+  await page.evaluate(() => window.__layers.solo("vars.ivars"));
+  const expectedUpdateMarks = await page.evaluate(() => {
+    const layer = window.__layers.state.doc.layers.find((l) => l.id === "vars.ivars");
+    return layer.marks.map((m) => `vars.ivars|${m.file}|${m.start}|${m.end}`).sort();
+  });
+  const updateTargetId = (await page.evaluate(() => window.__layers.scenes.list()))[0].id;
+  await page.locator(".scene-row").first().locator(".scene-update").click();
+  await page.evaluate(() => window.__layers.solo(null));
+  const afterUpdate = (await page.evaluate(() => window.__layers.scenes.list())).find((s) => s.id === updateTargetId);
+  check("⟲ update overwrites marks with the current view", JSON.stringify([...afterUpdate.marks].sort()) === JSON.stringify(expectedUpdateMarks));
+
+  // ✕ delete removes the scene
+  const idsBeforeDelete = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  await page.locator(".scene-row").first().locator(".scene-remove").click();
+  const idsAfterDelete = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  check(
+    "✕ delete removes the scene",
+    idsAfterDelete.length === idsBeforeDelete.length - 1 && !idsAfterDelete.includes(idsBeforeDelete[0]),
+  );
+
+  // reload restores the list from localStorage; &scene=2 restores the active scene
+  const idsBeforeReload = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  await page.goto(`${base}/?project=fixtures/example-ruby&scene=2`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const idsAfterReload = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  check("reload restores the scene list from localStorage", JSON.stringify(idsAfterReload) === JSON.stringify(idsBeforeReload));
+  check("&scene=2 restores the active scene", (await page.evaluate(() => window.__layers.scenes.activeId)) === idsAfterReload[1]);
+
+  // export link produces JSON equal to list() (read the Blob content in-page)
+  const exportHref = await page.locator("#scenes-export-link").getAttribute("href");
+  const exportedScenes = await page.evaluate(async (href) => (await (await fetch(href)).json()).scenes, exportHref);
+  const listNow = await page.evaluate(() => window.__layers.scenes.list());
+  check("export link JSON equals list()", JSON.stringify(exportedScenes) === JSON.stringify(listNow));
+
+  // import of examples/presentation.example-ruby.json via the real file input yields 4
+  // scenes and a "dropped 0" message
+  const examplePath = join(__dirname, "..", "examples", "presentation.example-ruby.json");
+  await page.setInputFiles("#scenes-import-input", examplePath);
+  const afterImport = await page.evaluate(() => window.__layers.scenes.list());
+  check("import via the real file input yields 4 scenes", afterImport.length === 4);
+  const importMessage = await page.locator("#scenes-message").textContent();
+  check('import shows "imported 4 scenes, dropped 0" message', /imported 4 scenes, dropped 0/.test(importMessage));
+
+  // token click still selects a symbol while a scene is active
+  const firstImportedId = (await page.evaluate(() => window.__layers.scenes.list()))[0].id;
+  await page.evaluate((id) => window.__layers.scenes.activate(id), firstImportedId);
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+  await clickText(18, "overdue?");
+  check(
+    "token click still selects a symbol while a scene is active",
+    (await page.evaluate(() => window.__layers.state.selectedSymbol)) === "Invoice#overdue?",
+  );
+
+  // screenshots: 4 scenes, one active, one with a pinned step
+  await page.screenshot({ path: join(OUT_DIR, "scenes-panel.png") });
+
+  const pinnedScene = (await page.evaluate(() => window.__layers.scenes.list())).find((s) => s.step !== null);
+  await page.evaluate((id) => window.__layers.scenes.activate(id), pinnedScene.id);
+  await page.screenshot({ path: join(OUT_DIR, "scene-active.png") });
+
+  // import of malformed JSON shows an inline error and leaves the list intact
+  const idsBeforeBadImport = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  await page.setInputFiles("#scenes-import-input", { name: "bad.json", mimeType: "application/json", buffer: Buffer.from("{ not valid json") });
+  const errorMessage = await page.locator("#scenes-message").textContent();
+  check("malformed JSON import shows an inline error message", errorMessage.length > 0 && !/imported/.test(errorMessage));
+  const idsAfterBadImport = (await page.evaluate(() => window.__layers.scenes.list())).map((s) => s.id);
+  check("malformed JSON import leaves the list intact", JSON.stringify(idsAfterBadImport) === JSON.stringify(idsBeforeBadImport));
+
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);
   if (consoleErrors.length) console.error("console errors:", consoleErrors);
