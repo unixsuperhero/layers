@@ -121,6 +121,7 @@ export function renderFileList(container, files, activeFile, onSelect) {
     item.addEventListener("click", () => onSelect(file));
     container.appendChild(item);
   }
+  container.querySelector(".file-list-item.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 export function renderFileTabs(container, files, activeFile, onSelect) {
@@ -133,6 +134,8 @@ export function renderFileTabs(container, files, activeFile, onSelect) {
     tab.addEventListener("click", () => onSelect(file));
     container.appendChild(tab);
   }
+  // single scrolling row: keep the active tab (and the active file-list row) in view
+  container.querySelector(".file-tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function countOn(selection, keys) {

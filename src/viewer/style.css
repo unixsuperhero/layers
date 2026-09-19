@@ -139,8 +139,16 @@ h3 {
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Long projects: the list scrolls (both ways) instead of pushing the rail off-screen. */
+#file-list {
+  flex: none;
+  max-height: 30vh;
+  overflow: auto;
 }
 
 .file-list-item:hover {
@@ -157,7 +165,14 @@ h3 {
   gap: 2px;
   padding: 6px 6px 0;
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.file-tab {
+  flex: none;
+  white-space: nowrap;
 }
 
 .file-tab {
