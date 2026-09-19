@@ -2,12 +2,14 @@
 // and asserts DOM state. Exits non-zero on any failed assertion.
 import { createServer } from "vite";
 import { chromium } from "playwright";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { parseBundle } from "../src/core/bundle.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, "smoke-out");
+const REPO_ROOT = join(__dirname, "..");
 mkdirSync(OUT_DIR, { recursive: true });
 
 const failures = [];
@@ -869,6 +871,163 @@ try {
   check("row label text-overflow is not ellipsis", hscroll.textOverflow !== "ellipsis");
 
   await page.screenshot({ path: join(OUT_DIR, "rail-wide.png") });
+
+  // --- Toolbar: project name, Export ---
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
+  check("toolbar Open… button visible", await page.locator("#toolbar-open").isVisible());
+  check("toolbar Import button visible", await page.locator("#toolbar-import").isVisible());
+  check("toolbar Export button visible", await page.locator("#toolbar-export").isVisible());
+  const toolbarProjectName = (await page.locator("#toolbar-project-name").textContent()).trim();
+  check("toolbar shows the project name", toolbarProjectName === "example-ruby");
+  await page.screenshot({ path: join(OUT_DIR, "toolbar.png") });
+
+  // A window-level marker + the navigation-entries count prove later imports mount without
+  // a page reload (a reload would create a new document and lose both).
+  await page.evaluate(() => {
+    window.__smokeMarker = "still-here";
+  });
+  const navCountBeforeImports = await page.evaluate(() => performance.getEntriesByType("navigation").length);
+
+  // give the export something non-trivial to carry: a scene, a selection, an open file
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+  await page.evaluate(() => window.__layers.scenes.addFromView("export check scene", { pinStep: false }));
+  const [download] = await Promise.all([page.waitForEvent("download"), page.locator("#toolbar-export").click()]);
+  const exportPath = join(OUT_DIR, "exported.layers-bundle.json");
+  await download.saveAs(exportPath);
+  const exported = JSON.parse(readFileSync(exportPath, "utf8"));
+  let exportParses = true;
+  try {
+    parseBundle(exported);
+  } catch {
+    exportParses = false;
+  }
+  check("export: parseBundle accepts the exported JSON", exportParses);
+  check("export: contains all 3 sources", Object.keys(exported.sources).sort().join(",") === "invoice.rb,mailer.rb,main.rb");
+  check("export: contains the doc", exported.doc && Array.isArray(exported.doc.layers));
+  check("export: contains the scene created above", exported.presentation.scenes.some((s) => s.name === "export check scene"));
+  check("export: contains the current selection", Array.isArray(exported.selection) && exported.selection.length > 0);
+  check("export: ui.file is the open file", exported.ui.file === "invoice.rb");
+
+  // --- Import via the real file input mounts without a reload ---
+  const exampleBundlePath = join(REPO_ROOT, "examples", "example-ruby.layers-bundle.json");
+  await page.setInputFiles("#toolbar-import-input", exampleBundlePath);
+  await page.waitForFunction(() => window.__layers?.scenes.list().length === 4);
+  const navCountAfterImport = await page.evaluate(() => performance.getEntriesByType("navigation").length);
+  const markerAfterImport = await page.evaluate(() => window.__smokeMarker);
+  check("import mounts without a page reload (navigation entries unchanged)", navCountAfterImport === navCountBeforeImports);
+  check("import mounts without a page reload (window marker survives)", markerAfterImport === "still-here");
+  check("import shows 4 scenes", (await page.evaluate(() => window.__layers.scenes.list())).length === 4);
+
+  // importing a second time, then one real ArrowRight advances the stepper by exactly 1 —
+  // proves the keydown handler isn't registered twice across remounts
+  await page.setInputFiles("#toolbar-import-input", exampleBundlePath);
+  await page.waitForFunction(() => window.__layers?.scenes.list().length === 4);
+  await page.evaluate(() => window.__layers.stepper.goto(0));
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press("ArrowRight");
+  const cursorAfterOneArrow = await page.evaluate(() => window.__layers.stepper.cursor);
+  check("importing twice + one real ArrowRight advances the stepper by exactly 1", cursorAfterOneArrow === 1);
+
+  // --- Import errors: tampered source, garbage JSON — inline, dismissible, never alert() ---
+  const tampered = JSON.parse(readFileSync(exampleBundlePath, "utf8"));
+  tampered.sources["invoice.rb"] = tampered.sources["invoice.rb"] + " ";
+  await page.setInputFiles("#toolbar-import-input", {
+    name: "tampered.layers-bundle.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(tampered)),
+  });
+  await page.waitForFunction(() => !document.querySelector("#app-message")?.hidden);
+  const tamperMessage = await page.locator("#app-message").textContent();
+  check("tampered-source import shows an inline error naming the file", /invoice\.rb/.test(tamperMessage));
+  check(
+    "tampered-source import leaves the current project mounted",
+    (await page.evaluate(() => window.__layers.scenes.list().length)) === 4,
+  );
+
+  await page.setInputFiles("#toolbar-import-input", {
+    name: "garbage.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{ not valid json"),
+  });
+  await page.waitForFunction((prev) => document.querySelector("#app-message")?.textContent !== prev, tamperMessage);
+  const garbageMessage = await page.locator("#app-message").textContent();
+  check("garbage JSON import shows an inline error", garbageMessage.length > 0);
+
+  await page.locator(".app-message-close").click();
+  check("the inline message is dismissible", await page.locator("#app-message").isHidden());
+
+  // --- Open… dialog: pick files, analyze, mount the analyzed project ---
+  const fixtureSrc = join(REPO_ROOT, "fixtures", "example-ruby", "src");
+  const ignoredTxtPath = join(OUT_DIR, "ignored.txt");
+  writeFileSync(ignoredTxtPath, "not ruby");
+
+  await page.locator("#toolbar-open").click();
+  await page.waitForSelector("#open-dialog[open]");
+  await page.setInputFiles("#open-add-files", [
+    join(fixtureSrc, "invoice.rb"),
+    join(fixtureSrc, "mailer.rb"),
+    join(fixtureSrc, "main.rb"),
+    ignoredTxtPath,
+  ]);
+  await page.waitForFunction(() => document.querySelectorAll("#open-file-list .open-file-row").length === 3);
+  const openFileRows = await page.locator("#open-file-list .open-file-path").allTextContents();
+  check("Open… file list shows exactly the 3 .rb files", openFileRows.slice().sort().join(",") === "invoice.rb,mailer.rb,main.rb");
+  const openIgnoredText = await page.locator("#open-ignored").textContent();
+  check("Open… reports 1 ignored non-.rb file", /1 non-\.rb file/.test(openIgnoredText));
+  const openEntryValue = await page.locator("#open-entry-select").inputValue();
+  check("Open… entry select preselects main.rb", openEntryValue === "main.rb");
+
+  await page.screenshot({ path: join(OUT_DIR, "open-dialog.png") });
+
+  await page.locator("#open-analyze").click();
+  await page.waitForFunction(() => !document.querySelector("#open-dialog").open, null, { timeout: 30000 });
+
+  const analyzedInvoiceLabels = await page
+    .locator('[data-node-id="file/invoice.rb"] > .rail-accordion-body > .rail-accordion > .rail-accordion-header .rail-accordion-name')
+    .allTextContents();
+  check(
+    "Open…: analyzed project rail shows initialize/summary/overdue? under invoice.rb",
+    ["initialize", "summary", "overdue?"].every((m) => analyzedInvoiceLabels.includes(m)),
+  );
+  check("Open…: stepper panel is visible", await page.locator("#stepper-panel").isVisible());
+  const analyzedStepStatus = await page.locator(".step-status").textContent();
+  check("Open…: stepper shows a non-empty trace", /event \d+\/\d+/.test(analyzedStepStatus) && !/\/0/.test(analyzedStepStatus));
+  const execMarksCount = await page.evaluate(() => {
+    const layer = window.__layers.state.doc.layers.find((l) => l.id === "exec.path");
+    return layer ? layer.marks.length : 0;
+  });
+  check("Open…: analyzed project has exec.path marks", execMarksCount > 0);
+
+  await page.screenshot({ path: join(OUT_DIR, "analyzed-project.png") });
+
+  // --- Open… with entry "none": no stepper, static layers only ---
+  await page.locator("#toolbar-open").click();
+  await page.waitForSelector("#open-dialog[open]");
+  await page.locator("#open-entry-select").selectOption("");
+  await page.locator("#open-project-name").fill("no-entry-project");
+  await page.locator("#open-analyze").click();
+  await page.waitForFunction(() => !document.querySelector("#open-dialog").open, null, { timeout: 30000 });
+
+  check("Open… entry=none: no stepper section", !(await page.locator("#stepper-section").isVisible()));
+  const noEntryLayerIds = await page.evaluate(() => window.__layers.state.doc.layers.map((l) => l.id));
+  check("Open… entry=none: static layers are present", noEntryLayerIds.some((id) => id.startsWith("defs.")));
+  check("Open… entry=none: no exec.path layer (no trace requested)", !noEntryLayerIds.includes("exec.path"));
+
+  // --- /api/analyze rejects a path-escaping upload ---
+  // Uses Playwright's request context (not page.evaluate(fetch)) so this expected 400
+  // doesn't show up as a page console error.
+  const rejectResponse = await page.request.post(`${base}/api/analyze`, {
+    data: { name: "bad", files: [{ path: "../evil.rb", text: "x" }], entry: null },
+  });
+  const rejectBody = await rejectResponse.json();
+  check("POST /api/analyze rejects a ../evil.rb path with 400", rejectResponse.status() === 400 && !!rejectBody.error);
+
+  // --- .layers-work/ is cleaned up after every analyze run above ---
+  const workDir = join(REPO_ROOT, ".layers-work");
+  check(".layers-work/ is empty after all analyze runs", !existsSync(workDir) || readdirSync(workDir).length === 0);
 
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);

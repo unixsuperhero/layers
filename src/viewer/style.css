@@ -616,6 +616,10 @@ h3 {
   flex: none;
 }
 
+.right-section[hidden] {
+  display: none !important;
+}
+
 .right-section-header {
   display: flex;
   align-items: center;
@@ -936,6 +940,10 @@ h3 {
   border: 1px solid var(--accent);
   color: var(--accent);
   font-size: 11px;
+}
+
+.app-message[hidden] {
+  display: none;
 }
 
 .app-message.error {
