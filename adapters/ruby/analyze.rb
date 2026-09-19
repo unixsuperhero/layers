@@ -9,6 +9,7 @@ require "optparse"
 require "pathname"
 require "fileutils"
 require "tmpdir"
+require "find"
 require "json"
 require "prism"
 require "rbconfig"
@@ -100,10 +101,43 @@ def build_marks_and_index(visitors)
   { marks: def_marks + var_marks + const_marks + call_marks, method_spans: method_spans }
 end
 
-# Copies `sources` (rel => bytes) byte-for-byte into a fresh temp directory, mirroring
-# the relative directory structure, and returns that directory's Pathname.
-def copy_project_to_tmp(sources)
+RUN_COPY_MAX_FILES = 5000
+RUN_COPY_MAX_BYTES = 50 * 1024 * 1024
+
+# Everything under `root` the traced program might need at run time (unselected .rb files it
+# requires, data files it reads), as rel => abs path. Skips SKIP_DIRS, dotfiles dirs and symlinks.
+# Returns nil when the tree is too big to copy -- the caller then runs with the selection only.
+def runtime_files(root)
+  found = {}
+  bytes = 0
+  Find.find(root.to_s) do |path|
+    base = File.basename(path)
+    if File.directory?(path)
+      Find.prune if path != root.to_s && (FileDiscovery::SKIP_DIRS.include?(base) || base.start_with?("."))
+      next
+    end
+    next if File.symlink?(path) || !File.file?(path)
+
+    bytes += File.size(path)
+    return nil if found.size >= RUN_COPY_MAX_FILES || bytes > RUN_COPY_MAX_BYTES
+
+    found[Pathname.new(path).relative_path_from(root).to_s] = path
+  end
+  found
+end
+
+# Builds the temp directory the entry point runs in: the whole `root` tree (so requires into
+# files that were NOT selected for analysis still work), then the selected `sources`
+# (rel => bytes) written on top byte-for-byte. Returns that directory's Pathname.
+def copy_project_to_tmp(sources, root)
   dir = Pathname.new(Dir.mktmpdir("layers-analyze-"))
+  extra = runtime_files(root)
+  warn "warn: #{root} is too large to copy; running with the selected files only" if extra.nil?
+  (extra || {}).each do |rel, abs|
+    dest = dir + rel
+    FileUtils.mkdir_p(dest.dirname)
+    FileUtils.cp(abs, dest)
+  end
   sources.each do |rel, bytes|
     dest = dir + rel
     FileUtils.mkdir_p(dest.dirname)
@@ -147,7 +181,9 @@ def run_tracer(tmp_dir, entry_rel)
   when 0
     JSON.parse(File.read(trace_out))
   when 2
-    warn "warn: entry raised an exception; trace truncated at the raise (see docs/ROUND-3.md section A)"
+    raised = File.read(stderr_capture).lines.grep(/^entry raised /).first.to_s.strip
+    raised = raised.gsub("#{File.realpath(tmp_dir)}/", "").gsub("#{tmp_dir}/", "")
+    warn "warn: #{raised.empty? ? "entry raised an exception" : raised} -- trace is truncated at the raise"
     JSON.parse(File.read(trace_out))
   else
     fail_with("entry point failed (exit #{status.exitstatus.inspect}): #{File.read(stderr_capture).lines.first&.strip}")
@@ -203,12 +239,15 @@ def main
 
   trace_events = nil
   if entry_rel
-    tmp_dir = copy_project_to_tmp(sources)
+    tmp_dir = copy_project_to_tmp(sources, root)
     begin
       trace_events = run_tracer(tmp_dir, entry_rel)
     ensure
       FileUtils.remove_entry(tmp_dir)
     end
+    # The run saw the whole root; the document only knows the selected files.
+    trace_events = trace_events.select { |ev| sources.key?(ev["file"]) }
+    trace_events.each_with_index { |ev, i| ev["i"] = i }
 
     scope_index = ScopeIndex.new(built[:method_spans])
     seen = {}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -237,6 +237,44 @@ test('an entry that loops forever: 10s timeout, clear error, non-zero exit, no o
     const ps = spawnSync('pgrep', ['-f', 'adapters/ruby/test/samples/loops'], { encoding: 'utf8' });
     assert.equal((ps.stdout || '').trim(), '', 'a traced child process was left running');
   } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('analysing a SUBSET of files still runs the entry against the whole --root', () => {
+  // main.rb requires invoice.rb and mailer.rb; select only main.rb + invoice.rb.
+  const out = tmpDir('layers-subset-');
+  try {
+    const r = run([
+      path.join(FIXTURE_SRC, 'main.rb'), path.join(FIXTURE_SRC, 'invoice.rb'),
+      '--root', FIXTURE_SRC, '--entry', 'main.rb', '--out', out,
+    ]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stderr, /entry raised/, 'require_relative "mailer" must resolve at run time');
+    const doc = JSON.parse(readFileSync(path.join(out, 'layers.json'), 'utf8'));
+    assert.deepEqual(Object.keys(doc.files), ['invoice.rb', 'main.rb']);
+    assert.ok(validate(doc).ok, JSON.stringify(validate(doc).errors));
+    // the run got past the require: Invoice#summary was called (from the unselected mailer.rb)
+    assert.ok(doc.trace.some((e) => e.event === 'call' && e.symbol === 'Invoice#summary'));
+    assert.ok(doc.trace.every((e) => e.file in doc.files), 'events from unselected files are dropped');
+    assert.ok(doc.trace.every((e, i) => e.i === i), 'events are renumbered');
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('an entry that raises reports the exception class and message', () => {
+  const dir = tmpDir('layers-raise-');
+  const out = tmpDir('layers-raise-out-');
+  try {
+    const entry = path.join(dir, 'run.rb');
+    writeFileSync(entry, 'require_relative "missing_thing"\n');
+    const r = run([entry, '--entry', 'run.rb', '--out', out]);
+    assert.equal(r.status, 0);
+    assert.match(r.stderr, /warn: entry raised LoadError: cannot load such file -- missing_thing/);
+    assert.doesNotMatch(r.stderr, /layers-analyze-/, 'temp paths must not leak into the warning');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
     rmSync(out, { recursive: true, force: true });
   }
 });
