@@ -185,6 +185,57 @@ try {
     { n: 2, target: page.locator(".step-current").first(), place: "right" },
     { n: 3, target: page.locator(".step-status"), place: "left" },
   ]);
+
+  // 11. rail v2: per-file / per-method accordions
+  await page.evaluate(() => localStorage.clear());
+  await open();
+  const acc = (id) => page.locator(`[data-node-id="${id}"] > .rail-accordion-header`).first();
+  await acc("file/invoice.rb/scope/Invoice#summary").locator(".tree-caret").click();
+  await page.locator('[data-node-id="file/invoice.rb/scope/Invoice#summary/vars.temps"] input[type=checkbox]').first().uncheck();
+  await acc("all").locator(".tree-caret").click(); // collapse ALL FILES so the file accordion is in view
+  await page.mouse.move(700, 650);
+  await shoot("11-rail-v2", [
+    { n: 1, target: acc("all"), place: "right" },
+    { n: 2, target: acc("file/invoice.rb"), place: "right" },
+    { n: 3, target: acc("file/invoice.rb/whole"), place: "right" },
+    { n: 4, target: acc("file/invoice.rb/scope/Invoice#summary"), place: "right" },
+    { n: 5, target: page.locator('[data-node-id="file/invoice.rb/scope/Invoice#summary/vars.temps"]').first(), place: "right" },
+    { n: 6, target: page.locator("#focus-toggle"), place: "top" },
+    { n: 7, target: page.locator("#rail-resize"), place: "right", pad: 2 },
+  ]);
+
+  // 12. focus: everything ticked pops, the rest dims
+  await page.evaluate(() => {
+    const L = window.__layers;
+    L.setMarks(L.state.selection, false);
+    const keys = L.state.doc.layers
+      .filter((l) => l.id === "vars.locals")
+      .flatMap((l) => l.marks.filter((m) => ["Invoice#summary", "Invoice#initialize"].includes(m.data?.scope)).map((m) => `${l.id}|${m.file}|${m.start}|${m.end}`));
+    L.setMarks(keys, true);
+  });
+  await page.keyboard.press("f");
+  await shoot("12-focus", [
+    { n: 1, target: page.locator("#focus-toggle"), place: "bottom" },
+    { n: 2, target: line(12).locator(".lyr-solo").first(), place: "left" },
+    { n: 3, target: line(19), place: "bottom", pad: 0 },
+  ]);
+  await page.keyboard.press("f");
+  await page.evaluate(() => window.__layers.resetSelection());
+
+  // 13. toolbar + Open… dialog
+  await page.locator("#toolbar-open").click();
+  await page.locator("#open-dialog[open]").waitFor();
+  await page.locator("#open-add-files").setInputFiles(["invoice.rb", "mailer.rb", "main.rb"].map((f) => `fixtures/example-ruby/src/${f}`));
+  await page.waitForFunction(() => document.querySelectorAll("#open-file-list > *").length === 3);
+  await shoot("13-open", [
+    { n: 1, target: page.locator("#toolbar-open"), place: "bottom" },
+    { n: 2, target: page.locator("#toolbar-import"), place: "bottom" },
+    { n: 3, target: page.locator("#toolbar-export"), place: "right" },
+    { n: 4, target: page.locator(".open-add-btn").nth(0), place: "top" },
+    { n: 5, target: page.locator(".open-add-btn").nth(1), place: "top" },
+    { n: 6, target: page.locator("#open-entry-select"), place: "right" },
+    { n: 7, target: page.locator("#open-analyze"), place: "bottom" },
+  ]);
 } finally {
   await browser.close();
   await server.close();
