@@ -13,9 +13,12 @@ require "find"
 require "json"
 require "prism"
 require "rbconfig"
+require "set"
 
 require_relative "lib/file_discovery"
 require_relative "lib/static_visitor"
+require_relative "lib/effects_visitor"
+require_relative "lib/effect_verdicts"
 require_relative "lib/project_index"
 require_relative "lib/constant_resolver"
 require_relative "lib/call_resolver"
@@ -42,6 +45,9 @@ def parse_argv(argv)
     o.on("--bundle FILE") { |v| options[:bundle] = v }
     o.on("--stdout", "print the layers document (JSON) to stdout -- for editor integrations") { options[:stdout] = true }
     o.on("--name NAME") { |v| options[:name] = v }
+    o.on("--all-constants", "also emit unresolved refs.constants reads (data.resolved = false)") do
+      options[:all_constants] = true
+    end
   end
   inputs = parser.parse(argv)
   fail_with("no input paths given") if inputs.empty?
@@ -54,11 +60,13 @@ def relative_posix(path, root)
 end
 
 # Parses every discovered file; returns [sources (rel => bytes), successfully-parsed rel paths,
-# visitors (rel => StaticVisitor)]. Syntax errors are reported per file on stderr and that
-# file simply contributes no marks (its bytes still go into `sources`/`files`).
+# visitors (rel => StaticVisitor), effects_visitors (rel => EffectsVisitor)]. Syntax errors are
+# reported per file on stderr and that file simply contributes no marks (its bytes still go
+# into `sources`/`files`).
 def analyze_files(root, abs_files)
   sources = {}
   visitors = {}
+  effects_visitors = {}
   abs_files.each do |abs|
     rel = relative_posix(abs, root)
     bytes = File.binread(abs)
@@ -69,16 +77,20 @@ def analyze_files(root, abs_files)
       visitor = StaticVisitor.new(rel)
       visitor.visit(result.value)
       visitors[rel] = visitor
+
+      effects_visitor = EffectsVisitor.new(rel)
+      effects_visitor.visit(result.value)
+      effects_visitors[rel] = effects_visitor
     else
       result.errors.each do |err|
         warn "#{rel}:#{err.location.start_line}: #{err.message}"
       end
     end
   end
-  [sources, visitors]
+  [sources, visitors, effects_visitors]
 end
 
-def build_marks_and_index(visitors)
+def build_marks_and_index(visitors, effects_visitors, all_constants:)
   def_marks = []
   var_marks = []
   def_records = []
@@ -96,10 +108,31 @@ def build_marks_and_index(visitors)
   end
 
   index = ProjectIndex.new(def_records)
-  const_marks = ConstantResolver.resolve(raw_constants, index)
+  const_marks = ConstantResolver.resolve(raw_constants, index, all_constants: all_constants)
   call_marks = CallResolver.resolve(raw_calls, index)
 
-  { marks: def_marks + var_marks + const_marks + call_marks, method_spans: method_spans }
+  method_symbols = def_records.select { |r| %i[instance singleton].include?(r.kind) }.map(&:symbol).to_set
+
+  effect_marks = []
+  pending_calls = []
+  direct_kinds = Hash.new { |h, k| h[k] = Set.new }
+  effects_visitors.each_value do |ev|
+    effect_marks.concat(ev.effect_marks)
+    pending_calls.concat(ev.raw_effect_calls)
+    ev.direct_kinds.each { |sym, kinds| direct_kinds[sym].merge(kinds) }
+  end
+
+  verdicts = EffectVerdicts.compute(pending_calls: pending_calls, resolved_calls: call_marks, index: index,
+                                     direct_kinds: direct_kinds, method_symbols: method_symbols)
+
+  def_marks.select { |m| m.layer == "defs.methods" }.each do |m|
+    effects = verdicts[:effects_by_method][m.symbol]
+    m.extra = { "effects" => effects } if effects
+  end
+
+  marks = def_marks + var_marks + const_marks + call_marks + effect_marks +
+          verdicts[:unknown_marks] + verdicts[:calls_marks]
+  { marks: marks, method_spans: method_spans }
 end
 
 RUN_COPY_MAX_FILES = 5000
@@ -230,8 +263,8 @@ def main
   abs_files = discovered[:files]
   fail_with("no .rb files found") if abs_files.empty?
 
-  sources, visitors = analyze_files(root, abs_files)
-  built = build_marks_and_index(visitors)
+  sources, visitors, effects_visitors = analyze_files(root, abs_files)
+  built = build_marks_and_index(visitors, effects_visitors, all_constants: options[:all_constants])
   marks = built[:marks]
 
   sorted_rel = sources.keys.sort

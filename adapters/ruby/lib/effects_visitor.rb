@@ -229,9 +229,12 @@ class EffectsVisitor < Prism::Visitor
     elsif EffectCatalog::CONTROL_NAMES.include?(name)
       emit("effects.control", start_offset, finish_offset, symbol: nil, role: "reference",
            kind_data: { "kind" => "control" })
-    elsif @method_symbol && EffectCatalog::CLASS_SHAPE_NAMES.include?(name)
+    elsif EffectCatalog::CLASS_SHAPE_NAMES.include?(name)
+      # Only an effect INSIDE a method (docs/ROUND-4.md); at class-body level this is
+      # ordinary class definition (e.g. `attr_reader :x`, `include Comparable`) -- never a
+      # pending call either, so it can't fall through to effects.unknown below.
       emit("effects.global", start_offset, finish_offset, symbol: nil, role: "write",
-           kind_data: { "kind" => "global" })
+           kind_data: { "kind" => "global" }) if @method_symbol
     elsif EffectCatalog::DYNAMIC_DISPATCH_NAMES.include?(name)
       emit("effects.unknown", start_offset, finish_offset, symbol: nil, role: "reference",
            kind_data: { "kind" => "unknown", "name" => name })
