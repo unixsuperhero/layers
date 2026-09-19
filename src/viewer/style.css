@@ -229,15 +229,15 @@ h3 {
   color: var(--accent);
 }
 
-/* row-pin: caret + checkbox (+ swatch) stay visible while a row scrolls horizontally. */
+/* row-pin: the caret + checkbox (+ swatch) column. `position: sticky` was tried here (per
+   docs/ROUND-3.md D) but doesn't work cleanly: each row is only as wide as its own content
+   (nowrap), so a short row's sticky pin runs out of room and scrolls away with it long
+   before a longer row's does — the rail-wide.png screenshot showed rows going fully blank
+   at a horizontal scroll offset another row set. Skipped per the spec's own fallback. */
 .row-pin {
-  position: sticky;
-  left: 0;
-  z-index: 1;
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg);
   flex: none;
 }
 
