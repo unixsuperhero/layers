@@ -148,6 +148,18 @@ try {
     { n: 6, target: page.locator(".step-current").first(), place: "right" },
   ]);
 
+  // 10. call tree
+  await open();
+  await page.evaluate(() => window.__layers.stepper.goto(14));
+  const summaryCtRow = page.locator(".ct-row", { hasText: "Invoice#summary" }).first();
+  await shoot("10-call-tree", [
+    { n: 1, target: summaryCtRow.locator(".ct-symbol"), place: "left" },
+    { n: 2, target: summaryCtRow.locator(".ct-meta"), place: "left" },
+    { n: 3, target: summaryCtRow.locator(".ct-value"), place: "top" },
+    { n: 4, target: page.locator(".ct-row", { hasText: "block ×2" }).first(), place: "left" },
+    { n: 5, target: page.locator(".ct-row.active").first(), place: "bottom" },
+  ]);
+
   // 8–9. scenes (clean slate: earlier shots persisted selection/carets in localStorage)
   await page.evaluate(() => localStorage.clear());
   await open();

@@ -252,6 +252,98 @@ try {
   check("reload with i=14 restores cursor 14", reload14.cursor === 14);
   check("reload with i=14 opens invoice.rb", reload14.file === "invoice.rb");
 
+  // --- Call Tree ---
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
+  const rightSectionOrder = await page.locator(".col-right .right-section").evaluateAll((els) => els.map((e) => e.dataset.section));
+  check(
+    "Call Tree section sits between Symbol and Stepper",
+    JSON.stringify(rightSectionOrder) === JSON.stringify(["scenes", "symbol", "calltree", "stepper"]),
+  );
+  check("Call Tree section is visible", await page.locator("#calltree-section").isVisible());
+
+  function ctRow(text) {
+    return page.locator(".ct-row", { hasText: text }).first();
+  }
+
+  check("call tree root row shows the entry file and (top level)", (await ctRow("(top level)").locator(".ct-symbol").textContent()) === "main.rb");
+  check(
+    "Invoice#initialize row shows value [10, 32]",
+    (await ctRow("Invoice#initialize").locator(".ct-value").textContent()) === "⇒ [10, 32]",
+  );
+  check("Mailer#notify row is present", (await ctRow("Mailer#notify").count()) === 1);
+  check(
+    "Invoice#summary row shows value \"Total: 42\" and site mailer.rb:5 → invoice.rb:9",
+    (await ctRow("Invoice#summary").locator(".ct-value").textContent()) === '⇒ "Total: 42"' &&
+      (await ctRow("Invoice#summary").locator(".ct-meta").textContent()) === "mailer.rb:5 → invoice.rb:9",
+  );
+  check("block ×2 group row is present with meta invoice.rb:11", (await ctRow("block ×2").locator(".ct-meta").textContent()) === "invoice.rb:11");
+  check("Mailer#deliver row is present", (await ctRow("Mailer#deliver").count()) === 1);
+
+  check("before any stepper interaction, no call tree row is highlighted", (await page.locator(".ct-row.active").count()) === 0);
+
+  // REAL click on the Invoice#summary row: goes through the stepper's goto() path (file
+  // opens, current-statement decoration + panel update) and is recorded in jump history.
+  await page.evaluate(() => window.__layers.openFile("main.rb"));
+  await ctRow("Invoice#summary").locator(".ct-body").click();
+  const summaryClick = await page.evaluate(() => ({
+    cursor: window.__layers.stepper.cursor,
+    file: window.__layers.state.activeFile,
+    text: document.querySelector(".step-current")?.textContent,
+  }));
+  check("clicking Invoice#summary moves the stepper cursor to 7", summaryClick.cursor === 7);
+  check("clicking Invoice#summary opens invoice.rb", summaryClick.file === "invoice.rb");
+  check('clicking Invoice#summary shows current-statement "def summary"', summaryClick.text === "def summary");
+  await page.evaluate(() => window.__layers.back());
+  const backAfterRowClick = await page.evaluate(() => window.__layers.state.activeFile);
+  check("back() after the row click returns to main.rb", backAfterRowClick === "main.rb");
+
+  // goto(14) highlights the collapsed block ×2 group row
+  await page.evaluate(() => window.__layers.stepper.goto(14));
+  const activeAt14 = await page.evaluate(() => window.__layers.callTree.rows().filter((r) => r.active));
+  check("goto(14) highlights exactly the block ×2 row", activeAt14.length === 1 && activeAt14[0].label === "block ×2");
+  check("goto(14): the block ×2 row carries the active DOM class", await ctRow("block ×2").evaluate((el) => el.classList.contains("active")));
+
+  // REAL click on its caret expands the group; iteration #2 becomes the highlighted row
+  await ctRow("block ×2").locator(".tree-caret").click();
+  const activeAfterExpand = await page.evaluate(() => window.__layers.callTree.rows().filter((r) => r.active));
+  check("expanding the group re-highlights iteration #2", activeAfterExpand.length === 1 && activeAfterExpand[0].label === "#2");
+  check("#2 iteration row carries the active DOM class", await ctRow("#2").evaluate((el) => el.classList.contains("active")));
+
+  await page.screenshot({ path: join(OUT_DIR, "call-tree.png") });
+
+  // goto(21) highlights Mailer#deliver
+  await page.evaluate(() => window.__layers.stepper.goto(21));
+  const activeAt21 = await page.evaluate(() => window.__layers.callTree.rows().filter((r) => r.active));
+  check("goto(21) highlights Mailer#deliver", activeAt21.length === 1 && activeAt21[0].label === "Mailer#deliver");
+
+  // collapsing the section heading hides the rows and survives reload
+  await page.locator('.right-section[data-section="calltree"] .right-section-header').click();
+  check("collapsing the Call Tree heading hides its rows", !(await page.locator(".ct-row").first().isVisible()));
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  check(
+    "collapsed Call Tree section survives reload",
+    (await page.locator('.right-section[data-section="calltree"]').evaluate((el) => el.classList.contains("collapsed"))),
+  );
+  await page.locator('.right-section[data-section="calltree"] .right-section-header').click();
+
+  // importing a bundle (remount) still shows a working tree: one click = one goto, no duplicates
+  const callTreeExampleBundlePath = join(REPO_ROOT, "examples", "example-ruby.layers-bundle.json");
+  await page.setInputFiles("#toolbar-import-input", callTreeExampleBundlePath);
+  await page.waitForFunction(() => window.__layers?.scenes.list().length === 4);
+  await page.evaluate(() => window.__layers.openFile("main.rb"));
+  await ctRow("Invoice#summary").locator(".ct-body").click();
+  const importedClick = await page.evaluate(() => ({ cursor: window.__layers.stepper.cursor, file: window.__layers.state.activeFile }));
+  check("after import, clicking Invoice#summary still moves the cursor to 7", importedClick.cursor === 7);
+  await page.evaluate(() => window.__layers.back());
+  const importedBack = await page.evaluate(() => window.__layers.state.activeFile);
+  check("after import, one click = one goto: a single back() undoes it", importedBack === "main.rb");
+
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
   // --- Solo (focus) mode ---
 
   await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
@@ -1001,6 +1093,22 @@ try {
   });
   check("Open…: analyzed project has exec.path marks", execMarksCount > 0);
 
+  // real analyzer trace: the same call rows as the hand-written fixture despite its extra
+  // load-time events
+  check("Open…: analyzed project shows the Call Tree section", await page.locator("#calltree-section").isVisible());
+  const analyzedCallTreeLabels = await page.evaluate(() => window.__layers.callTree.rows().map((r) => r.label));
+  check(
+    "Open…: analyzed project's call tree has the same call rows as the fixture",
+    ["Invoice#initialize", "Mailer#notify", "Invoice#summary", "block ×2", "Mailer#deliver"].every((label) =>
+      analyzedCallTreeLabels.includes(label),
+    ),
+  );
+  const analyzedCallTreeClick = await (async () => {
+    await page.locator(".ct-row", { hasText: "Invoice#initialize" }).first().locator(".ct-body").click();
+    return page.evaluate(() => window.__layers.stepper.cursor);
+  })();
+  check("Open…: clicking a call tree row in the analyzed project moves the stepper", Number.isInteger(analyzedCallTreeClick));
+
   await page.screenshot({ path: join(OUT_DIR, "analyzed-project.png") });
 
   // --- Open… with entry "none": no stepper, static layers only ---
@@ -1015,6 +1123,7 @@ try {
   const noEntryLayerIds = await page.evaluate(() => window.__layers.state.doc.layers.map((l) => l.id));
   check("Open… entry=none: static layers are present", noEntryLayerIds.some((id) => id.startsWith("defs.")));
   check("Open… entry=none: no exec.path layer (no trace requested)", !noEntryLayerIds.includes("exec.path"));
+  check("Open… entry=none: Call Tree section is hidden (no trace)", !(await page.locator("#calltree-section").isVisible()));
 
   // --- /api/analyze rejects a path-escaping upload ---
   // Uses Playwright's request context (not page.evaluate(fetch)) so this expected 400

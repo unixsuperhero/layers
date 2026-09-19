@@ -108,6 +108,7 @@ export function createCallTreePanel(root, host) {
         else expanded.add(r.id);
         if (lastCursor !== null) activeId = resolveActiveId(lastCursor);
         render();
+        scrollActiveIntoView();
       });
     }
 
@@ -149,12 +150,16 @@ export function createCallTreePanel(root, host) {
     }
   }
 
+  function scrollActiveIntoView() {
+    const el = activeId && containerEl.querySelector(`[data-row-id="${CSS.escape(activeId)}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }
+
   function follow(cursor) {
     lastCursor = cursor;
     activeId = resolveActiveId(cursor);
     render();
-    const el = activeId && containerEl.querySelector(`[data-row-id="${CSS.escape(activeId)}"]`);
-    el?.scrollIntoView({ block: "nearest" });
+    scrollActiveIntoView();
   }
 
   function debugRows() {
