@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Thin launcher: pins BUNDLE_GEMFILE to adapters/ruby/Gemfile (by this script's OWN
+# location, not the caller's cwd) so `bundle exec`-free invocation from anywhere still
+# finds the pinned Prism gem, then hands off to adapters/ruby/analyze.rb.
+
+require "pathname"
+
+adapter_dir = (Pathname.new(__dir__) + "../adapters/ruby").expand_path
+ENV["BUNDLE_GEMFILE"] = (adapter_dir + "Gemfile").to_s
+
+begin
+  require "bundler/setup"
+rescue LoadError, StandardError
+  warn "error: run 'bundle install' in adapters/ruby"
+  exit 1
+end
+
+load (adapter_dir + "analyze.rb").to_s
