@@ -1,0 +1,78 @@
+{
+  "producer": "fixture@1",
+  "comment": "marks: [layer, file, line, text, symbol, role, nth?]  — text is located on that line (nth occurrence, default 1); byte offsets are computed by scripts/build-fixture.mjs",
+  "marks": [
+    ["defs.classes",    "invoice.rb", 2,  "Invoice",    "Invoice",                 "definition"],
+    ["defs.classes",    "mailer.rb",  3,  "Mailer",     "Mailer",                  "definition"],
+
+    ["defs.methods",    "invoice.rb", 5,  "initialize", "Invoice#initialize",      "definition"],
+    ["defs.methods",    "invoice.rb", 9,  "summary",    "Invoice#summary",         "definition"],
+    ["defs.methods",    "invoice.rb", 18, "overdue?",   "Invoice#overdue?",        "definition"],
+    ["defs.methods",    "mailer.rb",  4,  "notify",     "Mailer#notify",           "definition"],
+    ["defs.methods",    "mailer.rb",  9,  "deliver",    "Mailer#deliver",          "definition"],
+
+    ["defs.attributes", "invoice.rb", 3,  ":items",     "Invoice#items",           "definition"],
+
+    ["vars.locals",     "invoice.rb", 5,  "items",      "Invoice#initialize/items", "write"],
+    ["vars.locals",     "invoice.rb", 6,  "items",      "Invoice#initialize/items", "read", 2],
+    ["vars.locals",     "invoice.rb", 10, "total",      "Invoice#summary/total",   "write"],
+    ["vars.locals",     "invoice.rb", 12, "total",      "Invoice#summary/total",   "write"],
+    ["vars.locals",     "invoice.rb", 15, "total",      "Invoice#summary/total",   "read"],
+    ["vars.locals",     "invoice.rb", 11, "item",       "Invoice#summary/item",    "write", 2],
+    ["vars.locals",     "invoice.rb", 12, "item",       "Invoice#summary/item",    "read"],
+    ["vars.locals",     "invoice.rb", 14, "label",      "Invoice#summary/label",   "write"],
+    ["vars.locals",     "invoice.rb", 15, "label",      "Invoice#summary/label",   "read"],
+    ["vars.locals",     "mailer.rb",  4,  "invoice",    "Mailer#notify/invoice",   "write"],
+    ["vars.locals",     "mailer.rb",  5,  "invoice",    "Mailer#notify/invoice",   "read"],
+    ["vars.locals",     "mailer.rb",  5,  "body",       "Mailer#notify/body",      "write"],
+    ["vars.locals",     "mailer.rb",  6,  "body",       "Mailer#notify/body",      "read"],
+    ["vars.locals",     "mailer.rb",  9,  "body",       "Mailer#deliver/body",     "write"],
+    ["vars.locals",     "mailer.rb",  10, "body",       "Mailer#deliver/body",     "read"],
+    ["vars.locals",     "main.rb",    4,  "invoice",    "main/invoice",            "write"],
+    ["vars.locals",     "main.rb",    5,  "invoice",    "main/invoice",            "read"],
+
+    ["vars.ivars",      "invoice.rb", 6,  "@items",     "Invoice@items",           "write"],
+
+    ["vars.temps",      "invoice.rb", 14, "label",      "Invoice#summary/label",   "write"],
+    ["vars.temps",      "invoice.rb", 15, "label",      "Invoice#summary/label",   "read"],
+    ["vars.temps",      "mailer.rb",  5,  "body",       "Mailer#notify/body",      "write"],
+    ["vars.temps",      "mailer.rb",  6,  "body",       "Mailer#notify/body",      "read"],
+
+    ["refs.constants",  "main.rb",    4,  "Invoice",    "Invoice",                 "reference"],
+    ["refs.constants",  "main.rb",    5,  "Mailer",     "Mailer",                  "reference"],
+
+    ["refs.calls",      "main.rb",    4,  "new",        "Invoice#initialize",      "reference"],
+    ["refs.calls",      "main.rb",    5,  "notify",     "Mailer#notify",           "reference"],
+    ["refs.calls",      "mailer.rb",  5,  "summary",    "Invoice#summary",         "reference"],
+    ["refs.calls",      "mailer.rb",  6,  "deliver",    "Mailer#deliver",          "reference"],
+    ["refs.calls",      "invoice.rb", 19, "summary",    "Invoice#summary",         "reference"],
+    ["refs.calls",      "invoice.rb", 11, "items",      "Invoice#items",           "reference"]
+  ],
+  "traceComment": "trace: [event, file, line, depth, extra] — span is the trimmed line; an exec.path layer is derived from the unique trace spans",
+  "trace": [
+    ["line",     "main.rb",    4,  0, { "locals": {} }],
+    ["call",     "invoice.rb", 5,  1, { "symbol": "Invoice#initialize", "recv": "Invoice" }],
+    ["line",     "invoice.rb", 6,  1, { "locals": { "items": "[10, 32]" } }],
+    ["return",   "invoice.rb", 7,  1, { "symbol": "Invoice#initialize", "value": "[10, 32]" }],
+    ["line",     "main.rb",    5,  0, { "locals": { "invoice": "#<Invoice>" } }],
+    ["call",     "mailer.rb",  4,  1, { "symbol": "Mailer#notify", "recv": "Mailer" }],
+    ["line",     "mailer.rb",  5,  1, { "locals": { "invoice": "#<Invoice>" } }],
+    ["call",     "invoice.rb", 9,  2, { "symbol": "Invoice#summary", "recv": "Invoice" }],
+    ["line",     "invoice.rb", 10, 2, { "locals": {} }],
+    ["line",     "invoice.rb", 11, 2, { "locals": { "total": "0" } }],
+    ["b_call",   "invoice.rb", 11, 3, {}],
+    ["line",     "invoice.rb", 12, 3, { "locals": { "total": "0", "item": "10" } }],
+    ["b_return", "invoice.rb", 13, 3, {}],
+    ["b_call",   "invoice.rb", 11, 3, {}],
+    ["line",     "invoice.rb", 12, 3, { "locals": { "total": "10", "item": "32" } }],
+    ["b_return", "invoice.rb", 13, 3, {}],
+    ["line",     "invoice.rb", 14, 2, { "locals": { "total": "42" } }],
+    ["line",     "invoice.rb", 15, 2, { "locals": { "total": "42", "label": "\"Total\"" } }],
+    ["return",   "invoice.rb", 16, 2, { "symbol": "Invoice#summary", "value": "\"Total: 42\"" }],
+    ["line",     "mailer.rb",  6,  1, { "locals": { "invoice": "#<Invoice>", "body": "\"Total: 42\"" } }],
+    ["call",     "mailer.rb",  9,  2, { "symbol": "Mailer#deliver", "recv": "Mailer" }],
+    ["line",     "mailer.rb",  10, 2, { "locals": { "body": "\"Total: 42\"" } }],
+    ["return",   "mailer.rb",  11, 2, { "symbol": "Mailer#deliver", "value": "nil" }],
+    ["return",   "mailer.rb",  7,  1, { "symbol": "Mailer#notify", "value": "nil" }]
+  ]
+}

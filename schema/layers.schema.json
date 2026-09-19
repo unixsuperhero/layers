@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "layers.schema.json",
+  "title": "layers.json",
+  "type": "object",
+  "required": ["version", "files", "layers"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["sha", "bytes"],
+        "additionalProperties": false,
+        "properties": {
+          "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/layer" }
+    },
+    "trace": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/traceEvent" }
+    }
+  },
+  "definitions": {
+    "layer": {
+      "type": "object",
+      "required": ["id", "kind", "producer", "marks"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-zA-Z0-9_-]*)+$" },
+        "kind": { "enum": ["static", "dynamic"] },
+        "producer": { "type": "string", "minLength": 1 },
+        "marks": { "type": "array", "items": { "$ref": "#/definitions/mark" } }
+      }
+    },
+    "mark": {
+      "type": "object",
+      "required": ["file", "start", "end", "symbol", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "symbol": { "type": ["string", "null"] },
+        "role": { "enum": ["definition", "reference", "write", "read", "executed"] },
+        "data": { "type": "object" }
+      }
+    },
+    "traceEvent": {
+      "type": "object",
+      "required": ["i", "event", "file", "start", "end", "depth"],
+      "additionalProperties": false,
+      "properties": {
+        "i": { "type": "integer", "minimum": 0 },
+        "event": { "enum": ["call", "return", "line", "b_call", "b_return", "raise"] },
+        "file": { "type": "string", "minLength": 1 },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "depth": { "type": "integer", "minimum": 0 },
+        "symbol": { "type": ["string", "null"] },
+        "recv": { "type": ["string", "null"] },
+        "locals": {
+          "type": ["object", "null"],
+          "additionalProperties": { "type": "string" }
+        },
+        "value": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

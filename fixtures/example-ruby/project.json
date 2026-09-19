@@ -1,0 +1,6 @@
+{
+  "name": "example-ruby",
+  "root": "src",
+  "files": ["invoice.rb", "mailer.rb", "main.rb"],
+  "entry": "main.rb"
+}
