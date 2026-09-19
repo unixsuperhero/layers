@@ -111,7 +111,11 @@ unknown → `unknown`; else `pure`. Top-level code (scope `null`) gets marks but
 
 ## C. layers.nvim
 
-- Pass `--all-constants`. New layers appear automatically; add default highlight groups:
+- **`--all-constants` is ON by default**: new config key `analyzer_args = { "--all-constants" }`
+  (appended to `analyzer_cmd` before the file path; set `analyzer_args = {}` to turn it off).
+  If the analyzer rejects the flag (older `layers` checkout: non-zero exit mentioning
+  `invalid option`), retry once without `analyzer_args` and say so in `:LayersInfo`.
+  New layers appear automatically; add default highlight groups:
   `defs.constants` (defs look), `effects.*` = `undercurl` + tinted bg in a red/amber family;
   `effects.*` default OFF. `refs.constants` with `data.resolved == false` uses a dimmer variant
   (`Layers_refs_constants_unresolved`).
