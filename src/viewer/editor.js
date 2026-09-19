@@ -45,6 +45,7 @@ const execLines = decorationField();
 const selectionMarks = decorationField();
 const flashMarks = decorationField();
 const stepperMarks = decorationField();
+const soloDim = decorationField();
 const execGutter = gutterMarkerField();
 const stepperGutter = gutterMarkerField();
 
@@ -93,23 +94,56 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.punctuation, color: "#abb2bf" },
 ]);
 
+// Per-layer colour comes from the `--lyr` custom property set on each `.lyr-<id>` class
+// (see panels.js layerStylesheet); cascade order there is sorted, so on a segment with
+// several layers the winning `--lyr` is the alphabetically-last one (border/outline). The
+// alphabetically-first layer's colour is set inline as `--lyr-bg` (background), so a
+// multi-layer segment (e.g. vars.locals + vars.temps) shows both colours at once.
 function classFor(layers) {
-  return "lyr " + layers.map((id) => "lyr-" + id.replaceAll(".", "-")).join(" ");
+  const classes = ["lyr", ...layers.map((id) => "lyr-" + id.replaceAll(".", "-"))];
+  const namespaces = new Set(layers.map((id) => id.split(".")[0]));
+  if (namespaces.has("defs")) classes.push("ns-defs");
+  if (namespaces.has("refs")) classes.push("ns-refs");
+  if (layers.includes("vars.temps")) classes.push("ns-vars-temps");
+  return classes.join(" ");
 }
 
-function markDecorations(segments) {
+// strong: solo mode is active, so every rendered segment is already solo-only — paint it
+// with the near-opaque "lyr-solo" style instead of the subtle default.
+function markDecorations(segments, colours, strong) {
   const sorted = [...segments].sort((a, b) => a.start - b.start);
   const builder = new RangeSetBuilder();
   for (const seg of sorted) {
+    const cls = classFor(seg.layers) + (strong ? " lyr-solo" : "");
+    const bg = colours[seg.layers[0]];
     builder.add(
       seg.start,
       seg.end,
       Decoration.mark({
-        class: classFor(seg.layers),
-        attributes: { "data-marks": seg.marks.join(",") },
+        class: cls,
+        attributes: { "data-marks": seg.marks.join(","), style: `--lyr-bg: ${bg};` },
       }),
     );
   }
+  return builder.finish();
+}
+
+// Dims everything NOT covered by a soloed mark, so the soloed layer(s) visibly pop.
+function dimDecorations(docLength, soloedRanges) {
+  const sorted = [...soloedRanges].sort((a, b) => a.start - b.start);
+  const merged = [];
+  for (const r of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
+    else merged.push({ ...r });
+  }
+  const builder = new RangeSetBuilder();
+  let pos = 0;
+  for (const r of merged) {
+    if (r.start > pos) builder.add(pos, r.start, Decoration.mark({ class: "code-dim" }));
+    pos = Math.max(pos, r.end);
+  }
+  if (pos < docLength) builder.add(pos, docLength, Decoration.mark({ class: "code-dim" }));
   return builder.finish();
 }
 
@@ -154,6 +188,7 @@ function baseExtensions(onClick) {
     selectionMarks.field,
     flashMarks.field,
     stepperMarks.field,
+    soloDim.field,
     execGutter.field,
     stepperGutter.field,
     lineNumbers(),
@@ -211,14 +246,22 @@ export function createEditor(parent, { onClick } = {}) {
         selectionMarks.effect.of(Decoration.none),
         flashMarks.effect.of(Decoration.none),
         stepperMarks.effect.of(Decoration.none),
+        soloDim.effect.of(Decoration.none),
         execGutter.effect.of(RangeSet.empty),
         stepperGutter.effect.of(RangeSet.empty),
       ],
     });
   }
 
-  function setLayerDecorations(segments) {
-    view.dispatch({ effects: layerMarks.effect.of(markDecorations(segments)) });
+  function setLayerDecorations(segments, colours, strong) {
+    view.dispatch({ effects: layerMarks.effect.of(markDecorations(segments, colours, strong)) });
+  }
+
+  // soloedRanges: char-offset ranges ({start,end}) of the soloed marks in this file, or
+  // null to clear the dimming (solo off, or solo is exec.path-only).
+  function setSoloDim(soloedRanges) {
+    const deco = soloedRanges ? dimDecorations(view.state.doc.length, soloedRanges) : Decoration.none;
+    view.dispatch({ effects: soloDim.effect.of(deco) });
   }
 
   function setExecDecorations(executedRanges, execEnabled) {
@@ -269,6 +312,7 @@ export function createEditor(parent, { onClick } = {}) {
     setExecDecorations,
     setSelectionDecorations,
     setStepperDecoration,
+    setSoloDim,
     scrollTo,
     scrollIntoView,
   };

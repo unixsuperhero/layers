@@ -1,4 +1,5 @@
 import { lineOfOffset } from "./marks-at.js";
+import { matchesSolo } from "./solo.js";
 
 export function buildLayout(app) {
   app.innerHTML = `
@@ -13,6 +14,7 @@ export function buildLayout(app) {
       </div>
       <div class="col col-center">
         <div class="file-tabs" id="file-tabs"></div>
+        <div class="solo-chip" id="solo-chip" hidden></div>
         <div class="editor-host" id="editor-host"></div>
       </div>
       <div class="col col-right">
@@ -26,6 +28,7 @@ export function buildLayout(app) {
     layersEl: app.querySelector("#layer-panel"),
     fileTabsEl: app.querySelector("#file-tabs"),
     editorEl: app.querySelector("#editor-host"),
+    soloChipEl: app.querySelector("#solo-chip"),
     symbolEl: app.querySelector("#symbol-panel"),
     stepperEl: app.querySelector("#stepper-panel"),
     backBtn: app.querySelector("#nav-back"),
@@ -69,7 +72,9 @@ function groupByNamespace(layers) {
   return groups;
 }
 
-export function renderLayerPanel(container, layers, layerState, colours, onToggleLayer, onToggleGroup) {
+// solo: current solo value (layer id, "ns.*", or null). onSoloLayer/onSoloGroup fire on a
+// name/swatch click; the checkbox stays wired to onToggleLayer/onToggleGroup only.
+export function renderLayerPanel(container, layers, layerState, colours, solo, onToggleLayer, onToggleGroup, onSoloLayer, onSoloGroup) {
   container.innerHTML = "";
   const h = document.createElement("h2");
   h.textContent = "Layers";
@@ -81,9 +86,11 @@ export function renderLayerPanel(container, layers, layerState, colours, onToggl
 
     const allOn = group.every((l) => layerState[l.id]);
     const noneOn = group.every((l) => !layerState[l.id]);
+    const groupSolo = `${ns}.*`;
+    const groupIsSoloed = solo === groupSolo;
 
-    const header = document.createElement("label");
-    header.className = "layer-group-header";
+    const header = document.createElement("div");
+    header.className = "layer-group-header" + (groupIsSoloed ? " solo" : "");
     const groupCb = document.createElement("input");
     groupCb.type = "checkbox";
     groupCb.checked = allOn;
@@ -94,12 +101,23 @@ export function renderLayerPanel(container, layers, layerState, colours, onToggl
         groupCb.checked,
       );
     });
-    header.append(groupCb, document.createTextNode(` ${ns}.*`));
+    const groupName = document.createElement("span");
+    groupName.className = "layer-group-name";
+    groupName.textContent = groupSolo;
+    groupName.addEventListener("click", () => onSoloGroup(ns));
+    header.append(groupCb, groupName);
+    if (groupIsSoloed) {
+      const badge = document.createElement("span");
+      badge.className = "solo-badge";
+      badge.textContent = "solo";
+      header.appendChild(badge);
+    }
     groupEl.appendChild(header);
 
     for (const layer of group) {
-      const row = document.createElement("label");
-      row.className = "layer-row";
+      const isSoloed = matchesSolo(layer.id, solo);
+      const row = document.createElement("div");
+      row.className = "layer-row" + (isSoloed ? " solo" : "");
       row.dataset.layerId = layer.id;
 
       const cb = document.createElement("input");
@@ -110,53 +128,37 @@ export function renderLayerPanel(container, layers, layerState, colours, onToggl
       const swatch = document.createElement("span");
       swatch.className = "layer-swatch";
       swatch.style.backgroundColor = colours[layer.id];
+      swatch.addEventListener("click", () => onSoloLayer(layer.id));
 
       const label = document.createElement("span");
       label.className = "layer-id";
       label.textContent = layer.id;
+      label.addEventListener("click", () => onSoloLayer(layer.id));
 
       const count = document.createElement("span");
       count.className = "layer-count";
       count.textContent = String(layer.marks.length);
 
       row.append(cb, swatch, label, count);
+      if (isSoloed) {
+        const badge = document.createElement("span");
+        badge.className = "solo-badge";
+        badge.textContent = "solo";
+        row.appendChild(badge);
+      }
       groupEl.appendChild(row);
     }
     container.appendChild(groupEl);
   }
 }
 
-function hexToRgba(hex, alpha) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-// Per-layer CSS: namespace decides which properties carry the colour, so overlapping
-// layers (different namespaces) never fight over the same property.
+// Injects only the colour: `.lyr-<id> { --lyr: #… }`, sorted so the cascade consistently
+// favours the alphabetically-last layer of a multi-layer segment (see editor.js). Every
+// other visual (background tint, border, namespace cues) lives in style.css and reads
+// `--lyr` / the inline `--lyr-bg` — colours are never hardcoded there.
 export function layerStylesheet(layers, colours) {
-  const rules = [];
-  for (const layer of layers) {
-    const cls = "lyr-" + layer.id.replaceAll(".", "-");
-    const ns = layer.id.split(".")[0];
-    const colour = colours[layer.id];
-    if (ns === "defs") {
-      rules.push(`.${cls} { color: ${colour}; font-weight: 700; }`);
-    } else if (ns === "refs") {
-      rules.push(
-        `.${cls} { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: ${colour}; }`,
-      );
-    } else if (ns === "vars") {
-      rules.push(`.${cls} { background-color: ${hexToRgba(colour, 0.28)}; border-radius: 2px; }`);
-      if (layer.id === "vars.temps") {
-        rules.push(`.${cls} { border-bottom: 2px dashed ${colour}; }`);
-      }
-    }
-    // exec.* is a line decoration styled statically in style.css, not per-layer colour.
-  }
-  return rules.join("\n");
+  const sorted = [...layers].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return sorted.map((layer) => `.lyr-${layer.id.replaceAll(".", "-")} { --lyr: ${colours[layer.id]}; }`).join("\n");
 }
 
 const STEP_BUTTONS = [

@@ -4,6 +4,7 @@ import { createNav, decideJump } from "./nav.js";
 import { assignPalette } from "./palette.js";
 import { marksAtPosition, innermostSymbol } from "./marks-at.js";
 import { diffLocals } from "./locals-diff.js";
+import { paintedLayerIds, layersForSolo, cycleSolo } from "./solo.js";
 import { flatten } from "../core/flatten.js";
 import { createStepper } from "../core/stepper.js";
 import {
@@ -54,7 +55,7 @@ function injectStylesheet(css) {
   document.head.appendChild(style);
 }
 
-function boot(app, projectDir, { project, doc, sources, offsets, index }, requestedFile, requestedI) {
+function boot(app, projectDir, { project, doc, sources, offsets, index }, requestedFile, requestedI, requestedSolo) {
   const colours = assignPalette(doc.layers.map((l) => l.id));
   injectStylesheet(layerStylesheet(doc.layers, colours));
 
@@ -63,9 +64,12 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   const layerState = {};
   for (const layer of doc.layers) layerState[layer.id] = layer.kind === "static";
 
+  const allLayerIds = doc.layers.map((l) => l.id);
+  let solo = requestedSolo && layersForSolo(allLayerIds, requestedSolo).length ? requestedSolo : null;
+
   let activeFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
   let selectedSymbol = null;
-  let clickableMarks = []; // char-offset marks of enabled, non-exec layers in the active file
+  let clickableMarks = []; // char-offset marks of the active (solo, else enabled), non-exec layers
 
   const stepper = doc.trace && doc.trace.length ? createStepper(doc.trace) : null;
   // Stepper starts driving the editor (file switches, decoration, URL `i=`) only once the
@@ -90,11 +94,11 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     editor.scrollTo(pos.start, pos.end);
   }
 
-  function computeClickableMarks(file) {
+  function computeClickableMarks(file, activeIds) {
     const marks = [];
     for (const layer of doc.layers) {
       if (layer.id.startsWith("exec.")) continue; // exec is line-level, not clickable inline
-      if (!layerState[layer.id]) continue;
+      if (!activeIds.has(layer.id)) continue;
       for (const mark of layer.marks) {
         if (mark.file !== file) continue;
         marks.push({
@@ -121,11 +125,14 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   }
 
   function paintFile(file) {
-    clickableMarks = computeClickableMarks(file);
-    const segments = flatten(clickableMarks.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
-    editor.setLayerDecorations(segments);
+    const enabledIds = new Set(allLayerIds.filter((id) => layerState[id]));
+    const activeIds = new Set(paintedLayerIds({ allIds: allLayerIds, enabledIds, solo }));
 
-    const execEnabled = !!layerState["exec.path"];
+    clickableMarks = computeClickableMarks(file, activeIds);
+    const segments = flatten(clickableMarks.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
+    editor.setLayerDecorations(segments, colours, !!solo);
+
+    const execEnabled = activeIds.has("exec.path");
     const execLayer = execEnabled ? doc.layers.find((l) => l.id === "exec.path") : null;
     const execRanges = execLayer
       ? execLayer.marks
@@ -133,6 +140,11 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
           .map((m) => ({ start: offsets[file].byteToChar(m.start), end: offsets[file].byteToChar(m.end) }))
       : [];
     editor.setExecDecorations(execRanges, execEnabled);
+
+    // Dim everything but the soloed layer(s) — except a solo of exec.path alone, which has
+    // no inline marks and is shown via the line highlight + non-executed dimming above.
+    const execOnlySolo = solo && [...activeIds].every((id) => id.startsWith("exec."));
+    editor.setSoloDim(solo && !execOnlySolo ? segments.map((s) => ({ start: s.start, end: s.end })) : null);
 
     paintSelection();
     paintStepper();
@@ -160,6 +172,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     params.set("project", projectDir);
     params.set("file", activeFile);
     if (stepper && stepperActive) params.set("i", String(stepper.cursor));
+    if (solo) params.set("solo", solo);
     history.replaceState(null, "", `?${params.toString()}`);
   }
 
@@ -177,6 +190,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
       doc.layers,
       layerState,
       colours,
+      solo,
       (id, on) => {
         layerState[id] = on;
         paintFile(activeFile);
@@ -187,7 +201,38 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
         paintFile(activeFile);
         renderLayers();
       },
+      (id) => setSolo(solo === id ? null : id),
+      (ns) => {
+        const value = `${ns}.*`;
+        setSolo(solo === value ? null : value);
+      },
     );
+  }
+
+  function setSolo(value) {
+    solo = value;
+    paintFile(activeFile);
+    renderLayers();
+    renderSoloChip();
+    syncURL();
+  }
+
+  function soloCycle(direction) {
+    setSolo(cycleSolo(allLayerIds, solo, direction));
+  }
+
+  function renderSoloChip() {
+    layout.soloChipEl.hidden = !solo;
+    if (!solo) return;
+    layout.soloChipEl.innerHTML = "";
+    const text = document.createElement("span");
+    text.textContent = `solo: ${solo}`;
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "solo-chip-clear";
+    clear.textContent = "✕";
+    clear.addEventListener("click", () => setSolo(null));
+    layout.soloChipEl.append(text, clear);
   }
 
   function selectSymbol(symbol) {
@@ -319,6 +364,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       clearSelection();
+      setSolo(null);
       return;
     } else if (event.altKey && event.key === "ArrowLeft") {
       event.preventDefault();
@@ -330,7 +376,18 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
       return;
     }
 
-    if (!stepper || isBlockingFocus()) return;
+    if (isBlockingFocus()) return;
+
+    if (event.key === "]") {
+      soloCycle(1);
+      return;
+    }
+    if (event.key === "[") {
+      soloCycle(-1);
+      return;
+    }
+
+    if (!stepper) return;
     const action = STEP_KEYS[event.key];
     if (!action) return;
     event.preventDefault();
@@ -343,6 +400,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   renderLayers();
   openFile(activeFile);
   selectSymbol(null);
+  renderSoloChip();
 
   if (stepper) {
     layout.stepperEl.hidden = false;
@@ -363,6 +421,9 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
       get selectedSymbol() {
         return selectedSymbol;
       },
+      get solo() {
+        return solo;
+      },
       layerState,
     },
     openFile,
@@ -373,6 +434,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     },
     selectSymbol,
     jumpToSymbol,
+    solo: (idOrNull) => setSolo(idOrNull),
     back: () => nav.back(),
     forward: () => nav.forward(),
     stepper: stepper && {
@@ -407,7 +469,7 @@ async function main() {
     return;
   }
 
-  boot(app, projectDir, result, params.get("file"), params.get("i"));
+  boot(app, projectDir, result, params.get("file"), params.get("i"), params.get("solo"));
 }
 
 main();

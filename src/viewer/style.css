@@ -155,6 +155,15 @@ h3 {
   align-items: center;
   gap: 6px;
   font-weight: 600;
+  border-left: 2px solid transparent;
+  padding-left: 4px;
+}
+
+.layer-group-header.solo {
+  border-left-color: var(--accent);
+}
+
+.layer-group-name {
   cursor: pointer;
 }
 
@@ -163,7 +172,12 @@ h3 {
   align-items: center;
   gap: 6px;
   padding: 2px 0 2px 16px;
-  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.layer-row.solo {
+  border-left-color: var(--accent);
+  background: rgba(97, 175, 239, 0.1);
 }
 
 .layer-swatch {
@@ -171,6 +185,7 @@ h3 {
   height: 10px;
   border-radius: 2px;
   flex: none;
+  cursor: pointer;
 }
 
 .layer-id {
@@ -178,11 +193,47 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .layer-count {
   color: var(--fg-dim);
   font-size: 11px;
+}
+
+.solo-badge {
+  color: var(--accent);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex: none;
+}
+
+.solo-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.solo-chip-clear {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.solo-chip-clear:hover {
+  color: var(--fg);
 }
 
 .sym-empty {
@@ -222,10 +273,46 @@ h3 {
   margin-bottom: 4px;
 }
 
-/* --- layer marks (namespace-generic parts; per-layer colour is injected at runtime) --- */
+/* --- layer marks (namespace-generic parts; per-layer colour is injected at runtime) ---
+   Each mark carries a "lyr-<id>" class (sets --lyr, see panels.js layerStylesheet) and an
+   inline "--lyr-bg" (see editor.js markDecorations). For a single-layer segment both vars
+   are the same colour; for a multi-layer segment --lyr-bg is the first layer (background)
+   and --lyr the last (border) — so both colours show. */
 
 .lyr {
-  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--lyr-bg) 34%, transparent);
+  outline: 1px solid var(--lyr);
+  outline-offset: -1px;
+  border-radius: 3px;
+}
+
+.ns-defs {
+  font-weight: 700;
+}
+
+.ns-refs {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--lyr);
+}
+
+.ns-vars-temps {
+  outline-style: dashed;
+}
+
+/* --- solo (focus) mode: soloed marks get a strong, near-opaque style; everything else
+   in the file is dimmed via .code-dim --- */
+
+.lyr-solo {
+  background-color: color-mix(in srgb, var(--lyr-bg) 88%, transparent);
+  outline: 1px solid var(--lyr);
+  color: #10131a;
+  font-weight: 700;
+}
+
+.code-dim {
+  opacity: 0.45;
 }
 
 .sym-selected {
