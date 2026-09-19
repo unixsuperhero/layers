@@ -312,7 +312,7 @@ h3 {
 }
 
 .lyr-solo {
-  background-color: color-mix(in srgb, var(--lyr-bg) 88%, transparent);
+  background-color: color-mix(in srgb, var(--lyr-bg) 60%, white);
   outline: 1px solid var(--lyr);
   font-weight: 700;
 }
