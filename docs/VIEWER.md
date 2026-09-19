@@ -111,6 +111,8 @@ reads the current value.
 
 ## Symbols & jumping
 
+- Clicks resolve against **every** non-exec mark in the file, whether or not its layer is
+  ticked or soloed — hiding a layer only hides its paint, never its behaviour.
 - **Click** a mark → select its symbol (if several marks at the click position carry
   different symbols, prefer the innermost = shortest span). All marks of the selected
   symbol in the open file get an extra `sym-selected` highlight (outline). The Symbol

@@ -317,6 +317,49 @@ try {
   check('solo=vars.* : "total" token is strong-styled', groupSoloStrong.total);
   check('solo=vars.* : "@items" token is strong-styled', groupSoloStrong.items);
 
+  // --- Clicking works on tokens whose layer is NOT painted ---
+  // No element exists for a hidden mark, so click by the text's screen position.
+  async function clickText(lineNo, text, options = {}) {
+    const rect = await page.evaluate(({ lineNo, text }) => {
+      const lineEl = document.querySelectorAll(".cm-line")[lineNo - 1];
+      const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT);
+      let offset = lineEl.textContent.indexOf(text);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (offset < node.length) {
+          const range = document.createRange();
+          range.setStart(node, offset);
+          range.setEnd(node, Math.min(node.length, offset + text.length));
+          const r = range.getBoundingClientRect();
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }
+        offset -= node.length;
+      }
+    }, { lineNo, text });
+    if (options.meta) await page.keyboard.down("ControlOrMeta");
+    await page.mouse.click(rect.x, rect.y);
+    if (options.meta) await page.keyboard.up("ControlOrMeta");
+  }
+
+  // solo=vars.* is active here: `summary` (defs.methods, line 9) is not painted
+  await clickText(9, "summary");
+  const hiddenInSolo = await page.evaluate(() => window.__layers.state.selectedSymbol);
+  check("click selects a symbol whose layer is hidden by solo", hiddenInSolo === "Invoice#summary");
+
+  // every layer unticked, no solo: click + cmd-click still work
+  await page.evaluate(() => {
+    window.__layers.solo(null);
+    for (const id of Object.keys(window.__layers.state.layerState)) window.__layers.toggleLayer(id, false);
+  });
+  await page.evaluate(() => window.__layers.openFile("main.rb"));
+  check("no layer marks painted with all layers off", (await page.locator(".cm-content .lyr").count()) === 0);
+  await clickText(4, "Invoice");
+  const hiddenAllOff = await page.evaluate(() => window.__layers.state.selectedSymbol);
+  check("click selects a symbol with every layer off", hiddenAllOff === "Invoice");
+  check("selected symbol is outlined even though its layer is off", (await page.locator(".sym-selected").count()) > 0);
+  await clickText(5, "notify", { meta: true });
+  const jumpedAllOff = await page.evaluate(() => window.__layers.state.activeFile);
+  check("cmd/ctrl-click jumps with every layer off", jumpedAllOff === "mailer.rb");
+
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);
   if (consoleErrors.length) console.error("console errors:", consoleErrors);

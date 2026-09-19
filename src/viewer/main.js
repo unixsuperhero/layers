@@ -69,7 +69,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
 
   let activeFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
   let selectedSymbol = null;
-  let clickableMarks = []; // char-offset marks of the active (solo, else enabled), non-exec layers
+  let clickableMarks = []; // char-offset marks of ALL non-exec layers — clicks work whether or not a layer is painted
 
   const stepper = doc.trace && doc.trace.length ? createStepper(doc.trace) : null;
   // Stepper starts driving the editor (file switches, decoration, URL `i=`) only once the
@@ -94,11 +94,10 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     editor.scrollTo(pos.start, pos.end);
   }
 
-  function computeClickableMarks(file, activeIds) {
+  function computeClickableMarks(file) {
     const marks = [];
     for (const layer of doc.layers) {
       if (layer.id.startsWith("exec.")) continue; // exec is line-level, not clickable inline
-      if (!activeIds.has(layer.id)) continue;
       for (const mark of layer.marks) {
         if (mark.file !== file) continue;
         marks.push({
@@ -128,8 +127,9 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     const enabledIds = new Set(allLayerIds.filter((id) => layerState[id]));
     const activeIds = new Set(paintedLayerIds({ allIds: allLayerIds, enabledIds, solo }));
 
-    clickableMarks = computeClickableMarks(file, activeIds);
-    const segments = flatten(clickableMarks.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
+    clickableMarks = computeClickableMarks(file);
+    const painted = clickableMarks.filter((m) => activeIds.has(m.layer));
+    const segments = flatten(painted.map((m) => ({ start: m.start, end: m.end, layer: m.layer })));
     editor.setLayerDecorations(segments, colours, !!solo);
 
     const execEnabled = activeIds.has("exec.path");
