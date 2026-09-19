@@ -6,7 +6,7 @@ import {
   RangeSet,
   RangeSetBuilder,
 } from "@codemirror/state";
-import { EditorView, Decoration, keymap, gutter, GutterMarker } from "@codemirror/view";
+import { EditorView, Decoration, keymap, gutter, lineNumbers, GutterMarker } from "@codemirror/view";
 import { StreamLanguage, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { ruby } from "@codemirror/legacy-modes/mode/ruby";
 import { javascript } from "@codemirror/lang-javascript";
@@ -142,12 +142,15 @@ function baseExtensions(onClick) {
     selectionMarks.field,
     flashMarks.field,
     execGutter.field,
+    lineNumbers(),
     gutter({ class: "cm-exec-gutter", markers: (view) => view.state.field(execGutter.field) }),
     EditorView.lineWrapping,
     EditorView.theme(
       {
-        "&": { height: "100%", fontSize: "13px" },
+        "&": { height: "100%", fontSize: "13px", backgroundColor: "#1e2127", color: "#d7dae0" },
         ".cm-scroller": { fontFamily: "var(--mono-font)", overflow: "auto" },
+        ".cm-gutters": { backgroundColor: "#22262e", color: "#5c6370", border: "none" },
+        ".cm-activeLineGutter": { backgroundColor: "transparent" },
       },
       { dark: true },
     ),

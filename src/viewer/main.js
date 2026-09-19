@@ -41,7 +41,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
   const layerState = {};
   for (const layer of doc.layers) layerState[layer.id] = layer.kind === "static";
 
-  let activeFile = project.files.includes(requestedFile) ? requestedFile : project.entry;
+  let activeFile = project.files.includes(requestedFile) ? requestedFile : project.files[0];
   let selectedSymbol = null;
   let clickableMarks = []; // char-offset marks of enabled, non-exec layers in the active file
 
@@ -145,8 +145,18 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     renderSymbolPanel(layout.symbolEl, { symbol, entry: symbol ? index[symbol] : null, sources, offsets }, jumpToRef);
   }
 
+  // A jump pushes history, but the position we're jumping FROM also needs to be on the
+  // stack for back() to work; seed it lazily the first time we jump away from it.
+  function goToJump(entry) {
+    const current = nav.history.current();
+    if (!current || current.file !== activeFile) {
+      nav.history.push({ file: activeFile, pos: { start: 0, end: 0 } });
+    }
+    nav.goTo(entry);
+  }
+
   function jumpToRef(ref) {
-    nav.goTo({
+    goToJump({
       file: ref.file,
       pos: { start: offsets[ref.file].byteToChar(ref.start), end: offsets[ref.file].byteToChar(ref.end) },
     });
@@ -159,7 +169,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
       return;
     }
     const [target] = targets;
-    nav.goTo({
+    goToJump({
       file: target.file,
       pos: { start: offsets[target.file].byteToChar(target.start), end: offsets[target.file].byteToChar(target.end) },
     });
@@ -193,7 +203,7 @@ function boot(app, projectDir, { project, doc, sources, offsets, index }, reques
     }
 
     const { target } = decision;
-    nav.goTo({
+    goToJump({
       file: target.file,
       pos: { start: offsets[target.file].byteToChar(target.start), end: offsets[target.file].byteToChar(target.end) },
     });
