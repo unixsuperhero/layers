@@ -101,6 +101,29 @@ try {
   ]);
   await layerRow("exec.path").locator("input[type=checkbox]").uncheck();
 
+  // 7. picking individual items inside a layer
+  const caret = (id) => page.locator(`.layer-row[data-layer-id="${id}"] .tree-caret`);
+  const itemRow = (name) => page.locator(".item-row", { has: page.locator(".item-name", { hasText: new RegExp(`^${name.replace("?", "\\?")}$`) }) }).first();
+  await caret("defs.methods").click();
+  await itemRow("summary").locator("input[type=checkbox]").uncheck();
+  await itemRow("notify").locator("input[type=checkbox]").uncheck();
+  await caret("vars.locals").click();
+  await itemRow("item").locator(".tree-caret").click();
+  await page.locator(".mark-row", { hasText: "read" }).first().locator("input[type=checkbox]").uncheck();
+  await page.mouse.move(640, 600);
+  await shoot("07-items", [
+    { n: 1, target: caret("defs.methods"), place: "left" },
+    { n: 2, target: layerRow("defs.methods").locator(".layer-count"), place: "right" },
+    { n: 3, target: itemRow("summary").locator("input[type=checkbox]"), place: "left" },
+    { n: 4, target: itemRow("overdue?").locator(".item-label"), place: "bottom" },
+    { n: 5, target: page.locator(".mark-row", { hasText: "read" }).first(), place: "right" },
+    { n: 6, target: page.locator(".layer-reset"), place: "bottom" },
+    { n: 7, target: line(9), place: "top", pad: 0 },
+  ]);
+  await page.evaluate(() => window.__layers.resetSelection());
+  await caret("vars.locals").click();
+  await caret("defs.methods").click();
+
   // 5. symbols + jumping
   await page.locator("#file-tabs .file-tab", { hasText: "mailer.rb" }).click();
   await line(5).locator(".lyr-refs-calls").click();
@@ -122,6 +145,32 @@ try {
     { n: 4, target: page.locator(".step-frame").first(), place: "left" },
     { n: 5, target: page.locator(".step-locals"), place: "left" },
     { n: 6, target: page.locator(".step-current").first(), place: "right" },
+  ]);
+
+  // 8–9. scenes (clean slate: earlier shots persisted selection/carets in localStorage)
+  await page.evaluate(() => localStorage.clear());
+  await open();
+  await page.locator("#scenes-import-input").setInputFiles("examples/presentation.example-ruby.json");
+  await page.waitForFunction(() => window.__layers.scenes.list().length === 4);
+  const sceneRow = (n) => page.locator(".scene-row").nth(n - 1);
+  await sceneRow(3).locator(".scene-name").click();
+  await page.waitForFunction(() => window.__layers.scenes.activeId);
+  await sceneRow(2).hover();
+  await shoot("08-scenes", [
+    { n: 1, target: page.locator("#scenes-panel button", { hasText: "from view" }), place: "left" },
+    { n: 2, target: page.locator("#scenes-pin-step"), place: "bottom" },
+    { n: 3, target: sceneRow(2).locator(".scene-handle"), place: "left" },
+    { n: 4, target: sceneRow(3).locator(".scene-name"), place: "left" },
+    { n: 5, target: sceneRow(2).locator(".scene-dup"), place: "bottom", pad: 1 },
+    { n: 6, target: sceneRow(4).locator(".scene-step-badge"), place: "bottom" },
+    { n: 7, target: page.locator("#solo-chip"), place: "bottom", pad: -2 },
+  ]);
+  await page.keyboard.press("]");
+  await page.mouse.move(640, 600);
+  await shoot("09-scene-step", [
+    { n: 1, target: sceneRow(4), place: "left" },
+    { n: 2, target: page.locator(".step-current").first(), place: "right" },
+    { n: 3, target: page.locator(".step-status"), place: "left" },
   ]);
 } finally {
   await browser.close();
