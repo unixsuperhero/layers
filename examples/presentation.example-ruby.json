@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "scenes": [
+    {
+      "id": "s1",
+      "name": "The two classes",
+      "file": "invoice.rb",
+      "marks": [
+        "defs.classes|invoice.rb|61|68",
+        "defs.classes|mailer.rb|34|40"
+      ],
+      "step": null
+    },
+    {
+      "id": "s2",
+      "name": "Every method definition",
+      "file": "invoice.rb",
+      "marks": [
+        "defs.methods|invoice.rb|97|107",
+        "defs.methods|invoice.rb|147|154",
+        "defs.methods|invoice.rb|280|288",
+        "defs.methods|mailer.rb|47|53",
+        "defs.methods|mailer.rb|121|128"
+      ],
+      "step": null
+    },
+    {
+      "id": "s3",
+      "name": "summary's locals",
+      "file": "invoice.rb",
+      "marks": [
+        "vars.locals|invoice.rb|159|164",
+        "vars.locals|invoice.rb|188|192",
+        "vars.locals|invoice.rb|200|205",
+        "vars.locals|invoice.rb|209|213",
+        "vars.locals|invoice.rb|226|231",
+        "vars.locals|invoice.rb|249|254",
+        "vars.locals|invoice.rb|259|264"
+      ],
+      "step": null
+    },
+    {
+      "id": "s4",
+      "name": "Inside the loop (step 14)",
+      "file": "invoice.rb",
+      "marks": [
+        "defs.methods|invoice.rb|147|154",
+        "vars.locals|invoice.rb|159|164",
+        "vars.locals|invoice.rb|188|192",
+        "vars.locals|invoice.rb|200|205",
+        "vars.locals|invoice.rb|209|213",
+        "vars.locals|invoice.rb|259|264"
+      ],
+      "step": 14
+    }
+  ]
+}
