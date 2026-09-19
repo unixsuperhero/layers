@@ -323,8 +323,8 @@ h3 {
    accordion header, hidden entirely when the file has no methods with a known verdict. */
 .verdict-filter {
   display: flex;
-  gap: 2px;
-  margin: 2px 0 4px 18px;
+  gap: 1px;
+  margin: 2px 0 4px 14px;
   flex-wrap: wrap;
 }
 
@@ -335,8 +335,8 @@ h3 {
   border-radius: 3px;
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 9px;
+  padding: 1px 4px;
   line-height: 1.4;
 }
 

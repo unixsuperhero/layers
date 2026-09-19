@@ -45,12 +45,15 @@ try {
   const tabCount = await page.locator(".file-tab").count();
   check("3 file tabs", tabCount === 3);
 
-  // layer panel lists all 9 layer ids
+  // layer panel lists all 12 layer ids (docs/ROUND-4.md added effects.calls/.io/.state)
   const layerIds = await page.locator(".layer-id").allTextContents();
   const expectedLayers = [
     "defs.attributes",
     "defs.classes",
     "defs.methods",
+    "effects.calls",
+    "effects.io",
+    "effects.state",
     "exec.path",
     "refs.calls",
     "refs.constants",
@@ -59,8 +62,8 @@ try {
     "vars.temps",
   ];
   check(
-    "layer panel lists all 9 layer ids",
-    layerIds.length === 9 && expectedLayers.every((id) => layerIds.includes(id)),
+    "layer panel lists all 12 layer ids",
+    layerIds.length === 12 && expectedLayers.every((id) => layerIds.includes(id)),
   );
 
   // invoice.rb showing by default; "summary" on line 9 has class lyr-defs-methods
@@ -1092,6 +1095,10 @@ try {
     return layer ? layer.marks.length : 0;
   });
   check("Open…: analyzed project has exec.path marks", execMarksCount > 0);
+  check(
+    "Open…: analyzed project's rail shows verdict badges too (same real-analyzer effects data)",
+    (await page.locator('[data-node-id="file/invoice.rb"] .verdict-badge').count()) > 0,
+  );
 
   // real analyzer trace: the same call rows as the hand-written fixture despite its extra
   // load-time events
@@ -1137,6 +1144,147 @@ try {
   // --- .layers-work/ is cleaned up after every analyze run above ---
   const workDir = join(REPO_ROOT, ".layers-work");
   check(".layers-work/ is empty after all analyze runs", !existsSync(workDir) || readdirSync(workDir).length === 0);
+
+  // --- Effects & verdicts (docs/ROUND-4.md) ---
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${base}/?project=fixtures/example-ruby`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+
+  // palette: every layer swatch (ALL FILES, default-expanded namespace groups) is distinct
+  const swatchColours = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-node-id="all"] .layer-swatch')].map((el) => getComputedStyle(el).backgroundColor),
+  );
+  check("palette: all layer swatch colours are pairwise distinct", swatchColours.length > 0 && new Set(swatchColours).size === swatchColours.length);
+
+  // effects.* rows are present and unticked by default. This fixture's source has no
+  // constant assignments, so it produces no defs.constants layer/row to check "ticked" —
+  // that rule (isDefaultOff: only dynamic or effects.*) is instead covered directly by
+  // test/viewer-selection.test.js's "defs.constants" unit tests.
+  const effectsCheckedState = await page.evaluate(() =>
+    Object.fromEntries(
+      ["effects.calls", "effects.io", "effects.state"].map((id) => [
+        id,
+        document.querySelector(`[data-node-id="all"] .layer-row[data-layer-id="${id}"] input[type=checkbox]`)?.checked,
+      ]),
+    ),
+  );
+  check("effects.* rows are present and unticked by default", Object.values(effectsCheckedState).every((v) => v === false));
+
+  // ticking effects.io paints "puts" (mailer.rb:10) with a wavy underline and the right title
+  await page.evaluate(() => window.__layers.openFile("mailer.rb"));
+  await page.evaluate(() => window.__layers.toggleLayer("effects.io", true));
+  const putsInfo = await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".lyr-effects-io")].find((s) => s.textContent === "puts");
+    return el && { decorationStyle: getComputedStyle(el).textDecorationStyle, title: el.title };
+  });
+  check('ticking effects.io: "puts" (mailer.rb:10) has computed text-decoration-style "wavy"', putsInfo?.decorationStyle === "wavy");
+  check('ticking effects.io: "puts" title is "io: output"', putsInfo?.title === "io: output");
+
+  // ticking effects.calls paints "deliver" (mailer.rb:6) with a title naming Mailer#deliver + io
+  await page.evaluate(() => window.__layers.toggleLayer("effects.calls", true));
+  const deliverCallInfo = await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".lyr-effects-calls")].find((s) => s.textContent === "deliver");
+    return el && { title: el.title };
+  });
+  check(
+    'ticking effects.calls: "deliver" (mailer.rb:6) title mentions Mailer#deliver and io',
+    !!deliverCallInfo && /Mailer#deliver/.test(deliverCallInfo.title) && /io/.test(deliverCallInfo.title),
+  );
+
+  // REAL click on the effects.calls token selects the TARGET method symbol (Mailer#deliver)
+  await clickText(6, "deliver");
+  const deliverSelected = await page.evaluate(() => window.__layers.state.selectedSymbol);
+  check("clicking the effects.calls token selects the target symbol Mailer#deliver", deliverSelected === "Mailer#deliver");
+
+  // Symbol panel shows Mailer#deliver's verdict: impure, direct: io
+  const deliverVerdict = await page.evaluate(() => ({
+    verdict: document.querySelector(".sym-verdict")?.textContent ?? "",
+    direct: document.querySelector(".sym-effects-line")?.textContent ?? "",
+  }));
+  check("Symbol panel: Mailer#deliver shows verdict impure", /impure/.test(deliverVerdict.verdict));
+  check('Symbol panel: Mailer#deliver shows "direct: io"', deliverVerdict.direct === "direct: io");
+
+  // selecting Mailer#notify shows "via io: Mailer#deliver"; a REAL click on it jumps to
+  // mailer.rb:9 (Mailer#deliver's definition) and selects that symbol (history-recorded)
+  await page.evaluate(() => window.__layers.selectSymbol("Mailer#notify"));
+  const notifyViaText = await page.locator(".sym-via-row").first().textContent();
+  check('Symbol panel: Mailer#notify shows "via io: Mailer#deliver"', notifyViaText === "via io: Mailer#deliver");
+
+  await page.locator(".sym-via-row").first().click();
+  const viaJump = await page.evaluate(() => ({
+    file: window.__layers.state.activeFile,
+    selected: window.__layers.state.selectedSymbol,
+    flashLine: [...document.querySelectorAll(".cm-line")].findIndex((l) => l.querySelector(".lyr-flash")) + 1,
+  }));
+  check("clicking the via entry jumps to mailer.rb", viaJump.file === "mailer.rb");
+  check("clicking the via entry selects Mailer#deliver", viaJump.selected === "Mailer#deliver");
+  check("clicking the via entry lands on mailer.rb:9 (Mailer#deliver's definition)", viaJump.flashLine === 9);
+  await page.evaluate(() => window.__layers.back());
+
+  // rail badges: mailer.rb's notify/deliver are impure (●); invoice.rb's summary/overdue?
+  // are pure (○), initialize is impure (●)
+  const mailerBadges = await page.evaluate(() => ({
+    notify: document.querySelector('[data-node-id="file/mailer.rb/scope/Mailer#notify"] .verdict-badge')?.textContent,
+    deliver: document.querySelector('[data-node-id="file/mailer.rb/scope/Mailer#deliver"] .verdict-badge')?.textContent,
+  }));
+  check("rail: mailer.rb notify shows the impure badge (●)", mailerBadges.notify === "●");
+  check("rail: mailer.rb deliver shows the impure badge (●)", mailerBadges.deliver === "●");
+
+  await page.evaluate(() => window.__layers.openFile("invoice.rb"));
+  const invoiceBadges = await page.evaluate(() => ({
+    initialize: document.querySelector('[data-node-id="file/invoice.rb/scope/Invoice#initialize"] .verdict-badge')?.textContent,
+    summary: document.querySelector('[data-node-id="file/invoice.rb/scope/Invoice#summary"] .verdict-badge')?.textContent,
+    overdue: document.querySelector('[data-node-id="file/invoice.rb/scope/Invoice#overdue?"] .verdict-badge')?.textContent,
+  }));
+  check("rail: invoice.rb initialize shows the impure badge (●)", invoiceBadges.initialize === "●");
+  check("rail: invoice.rb summary shows the pure badge (○)", invoiceBadges.summary === "○");
+  check("rail: invoice.rb overdue? shows the pure badge (○)", invoiceBadges.overdue === "○");
+
+  // verdict filter "pure" on invoice.rb leaves exactly summary + overdue? (+ Whole file/top
+  // level), and persists across reload
+  await page.locator('[data-node-id="file/invoice.rb"] > .verdict-filter .verdict-filter-btn.verdict-pure').click();
+  const pureFilterLabels = await page
+    .locator('[data-node-id="file/invoice.rb"] > .rail-accordion-body > .rail-accordion > .rail-accordion-header .rail-accordion-name')
+    .allTextContents();
+  check(
+    'verdict filter "pure": invoice.rb leaves exactly Whole file / summary / overdue? / (top level)',
+    JSON.stringify(pureFilterLabels) === JSON.stringify(["Whole file", "summary", "overdue?", "(top level)"]),
+  );
+
+  await page.evaluate(() => document.querySelector('[data-node-id="file/invoice.rb"]').scrollIntoView({ block: "start" }));
+  await page.screenshot({ path: join(OUT_DIR, "rail-verdicts.png") });
+
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".file-tab");
+  const filterActiveAfterReload = await page.locator('[data-node-id="file/invoice.rb"] > .verdict-filter .verdict-filter-btn.active').textContent();
+  check('verdict filter "pure" persists across reload', filterActiveAfterReload.startsWith("pure"));
+  const pureFilterLabelsAfterReload = await page
+    .locator('[data-node-id="file/invoice.rb"] > .rail-accordion-body > .rail-accordion > .rail-accordion-header .rail-accordion-name')
+    .allTextContents();
+  check(
+    "verdict filter persists across reload: same filtered method groups",
+    JSON.stringify(pureFilterLabelsAfterReload) === JSON.stringify(["Whole file", "summary", "overdue?", "(top level)"]),
+  );
+  await page.locator('[data-node-id="file/invoice.rb"] > .verdict-filter .verdict-filter-btn', { hasText: /^all / }).click();
+
+  // solo of the effects.* group: all effects tokens strong, the rest of the file dimmed
+  await page.evaluate(() => window.__layers.openFile("mailer.rb"));
+  await page.evaluate(() => window.__layers.solo("effects.*"));
+  const effectsSoloState = await page.evaluate(() => ({
+    strong: [...document.querySelectorAll(".lyr-solo")].map((el) => el.textContent),
+    dimmed: document.querySelectorAll(".code-dim").length,
+  }));
+  check("solo(effects.*): puts and deliver are strong-styled", effectsSoloState.strong.includes("puts") && effectsSoloState.strong.includes("deliver"));
+  check("solo(effects.*): the rest of mailer.rb is dimmed", effectsSoloState.dimmed > 0);
+
+  await page.evaluate(() => window.__layers.selectSymbol("Mailer#notify"));
+  await page.screenshot({ path: join(OUT_DIR, "effects.png") });
+  await page.evaluate(() => window.__layers.solo(null));
+
+  // Call Tree rows show the same verdict badges
+  check("Call Tree: Mailer#notify row shows the impure badge", (await ctRow("Mailer#notify").locator(".verdict-badge").textContent()) === "●");
+  check("Call Tree: Mailer#deliver row shows the impure badge", (await ctRow("Mailer#deliver").locator(".verdict-badge").textContent()) === "●");
+  check("Call Tree: Invoice#summary row shows the pure badge", (await ctRow("Invoice#summary").locator(".verdict-badge").textContent()) === "○");
 
   check("no console errors", consoleErrors.length === 0);
   check("no page errors", pageErrors.length === 0);
