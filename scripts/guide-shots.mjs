@@ -236,6 +236,28 @@ try {
     { n: 6, target: page.locator("#open-entry-select"), place: "right" },
     { n: 7, target: page.locator("#open-analyze"), place: "bottom" },
   ]);
+
+  // 14. effects.* layers (docs/ROUND-4.md): the group, a wavy-underlined token, a verdict
+  // badge, the per-file verdict filter, and the Symbol panel's verdict block
+  await page.evaluate(() => document.getElementById("open-dialog")?.close());
+  await page.evaluate(() => localStorage.clear());
+  await open();
+  await page.locator("#file-tabs .file-tab", { hasText: "mailer.rb" }).click();
+  await page.evaluate(() => {
+    window.__layers.toggleLayer("effects.io", true);
+    window.__layers.toggleLayer("effects.calls", true);
+    window.__layers.selectSymbol("Mailer#deliver");
+  });
+  // collapse the other namespace groups so effects.* AND mailer.rb's method badges both
+  // fit on screen without scrolling
+  for (const ns of ["defs.*", "exec.*", "refs.*", "vars.*"]) await acc(`all/${ns}`).locator(".tree-caret").click();
+  await shoot("14-effects", [
+    { n: 1, target: acc("all/effects.*"), place: "right" },
+    { n: 2, target: line(10).locator(".lyr-effects-io"), place: "right" },
+    { n: 3, target: page.locator('[data-node-id="file/mailer.rb/scope/Mailer#deliver"] .verdict-badge'), place: "right" },
+    { n: 4, target: page.locator('[data-node-id="file/mailer.rb"] > .verdict-filter'), place: "right" },
+    { n: 5, target: page.locator("#symbol-panel .sym-verdict"), place: "left" },
+  ]);
 } finally {
   await browser.close();
   await server.close();
