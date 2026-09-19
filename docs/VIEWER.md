@@ -81,43 +81,64 @@ the second's, both visible at once.
 When `exec.path` is enabled, lines in the file with **no** executed mark are dimmed
 (opacity) — "not executed" must be visible, not just absent.
 
-Layer panel: checkbox per layer, grouped by namespace with a group toggle, mark count
-beside each, plus a caret to expand into per-item/per-mark selection — see
-[docs/SELECTION-AND-SCENES.md](SELECTION-AND-SCENES.md) Part A for the full tree, tri-state
-checkbox and persistence behaviour. Toggling re-computes decorations for that editor only (a
-CodeMirror `Compartment` or a `StateEffect` → `StateField`; don't rebuild the editor).
-Deviations from that spec: the left column is 260px (not ~220px) and nested rows get a
-bordered `.layer-items`/`.item-marks` wrapper (a vertical guide line per level) instead of
-flat indentation — both just to keep symbol names legible at this column width.
+Layer panel: **see "Layers rail v2" below** — this section describes the pre-Round-3 tree
+shape historically; the rail itself has been rebuilt.
 
-## Solo mode
+## Layers rail v2
 
-Clicking a layer's **name** (or its colour swatch) in the panel solos it — the checkbox
-still only toggles it on/off. Clicking a namespace group's name (`vars.*`) solos the
-whole group. Clicking the soloed layer's name again clears the solo. A solo value is
-either a plain layer id (`"vars.locals"`) or a namespace group (`"vars.*"`); the pure
-logic for resolving it — which layer ids it picks out, and cycling forward/back through
-the sorted ids — lives in `src/viewer/solo.js` (DOM-free, tested in
-`test/viewer-solo.test.js`).
+Full spec: [docs/ROUND-3.md](ROUND-3.md) section "D. Layers rail v2". Summary: the rail is
+now a set of nested accordions — **ALL FILES** (the original project-wide namespace →
+layer → item → mark tree, unchanged) plus one accordion per visible file, each holding
+**Whole file** (that file's layers, marks filtered to it) and one group per method that has
+marks (by `mark.data.scope`, in source order, short name as the group label / full symbol
+as its tooltip), plus a **(top level)** group for scope-null marks when any exist. Every
+level reuses the same layer/item/mark row components over a filtered mark list. Pure tree
+construction + solo-id resolution live in `src/viewer/rail-tree.js` (DOM-free, tested in
+`test/viewer-rail-tree.test.js`); the stateful wiring (selection, expanded-accordion set,
+solo, Focus, persistence) lives in `src/viewer/rail.js`; DOM rendering is
+`renderRailPanel` in `panels.js`. `main.js` only wires `rail.js`'s state to the editor.
 
-While a solo is active it completely overrides the checkboxes: only the soloed layer(s)
-are painted, even if their checkbox is off, and every other layer is hidden even if its
-checkbox is on. Soloed marks get the strong `lyr-solo` style — a near-opaque background
-in the layer's colour, a 1px outline, bold, and dark (`#10131a`, forced with `!important`
-onto the mark and its children — CodeMirror nests a syntax-highlighting span with its own
-colour inside every mark, which would otherwise win). Everything else in the file gets
-the `code-dim` class (opacity ~0.45), computed in `editor.js` as the complement of the
-soloed marks' ranges over the whole document. Soloing `exec.path` is the exception: it
-has no inline marks, so it just shows the normal line highlight + non-executed dimming,
-with nothing else dimmed.
+**Solo** generalizes to a name click at any level — a layer (in ALL FILES or inside a file/
+method group), a namespace group, a file, or a method — producing `{ id, label, keys }`
+where `id` is a node path (`all/vars.locals`, `file/invoice.rb/scope/Invoice#summary`, …).
+`window.__layers.solo(id)` and the URL's `solo=` also still accept the legacy plain forms
+(`"vars.locals"`, `"vars.*"`); those resolve independent of the tree and keep their literal
+form as `id` (so e.g. `?solo=vars.*` round-trips through the URL unchanged).
+`]` / `[` with no scenes still cycle only the ALL FILES layer ids, as before. While a solo
+is active, soloed marks get the strong `lyr-solo` style (near-opaque background, 1px
+outline, bold, dark text forced with `!important` over CodeMirror's syntax highlighting)
+and everything else gets `code-dim` (opacity ~0.45); `exec.path` has no inline marks so
+soloing it is just the normal line highlight + non-executed dimming. A `solo: <label> ✕`
+chip appears above the editor.
 
-The soloed row in the layer panel gets a `solo` class (left accent bar) and a `SOLO`
-badge; a group solo marks the group header the same way. A `solo: <id> ✕` chip appears
-above the editor; its `✕` clears the solo. Keys (same focus guard as the stepper keys):
-`]` solos the next layer id, `[` the previous, cycling through the sorted layer ids and
-starting from the first when nothing is soloed; `Esc` clears the solo (in addition to its
-existing job of clearing the selected symbol). Symbol click/jump and the stepper's
-current-statement decoration work unchanged in solo mode.
+**Focus** is a header toggle (and key `f`, same focus-guard as the stepper keys) that
+paints the current `selection` in the strong solo style and dims the rest — a "solo of
+everything that's ticked". `state.focus` / `window.__layers.focus(bool)` / URL `focus=1`;
+persisted per project. A name-click solo or an active scene temporarily overrides Focus
+while active (precedence: scene > solo > Focus > plain selection painting); a scene's
+"current view" capture is unchanged, since it already captures whatever is currently
+painted.
+
+**exec.path** items show the trimmed source line as their label (e.g. `total = 0`), not
+the literal word "executed"; meta stays `file:line`.
+
+**Resizable / horizontal scroll**: drag the rail's right edge or the right column's left
+edge (`src/viewer/resize.js`, min 180px, max 60vw, double-click resets, width persisted
+per project; dragging disables text selection and editor pointer events). Rows are
+`white-space: nowrap` and the rail panel scrolls horizontally instead of ellipsizing.
+
+Deviations from docs/ROUND-3.md D:
+- Item/mark **name clicks still jump** (unchanged from docs/SELECTION-AND-SCENES.md Part
+  A) rather than soloing, even though the spec's node-level list mentions "an item" — this
+  keeps the well-established jump behaviour and matches "ALL FILES … unchanged inside".
+  Only layer / namespace-group / file / method levels solo on a name click.
+- The caret + checkbox column is **not** sticky while horizontally scrolled. `position:
+  sticky` was tried (per the spec's own "if that works cleanly" clause) but doesn't: each
+  row is only as wide as its own content, so a short row's sticky pin runs out of room and
+  scrolls away with it well before a long row's does. Skipped, per the spec's fallback.
+- A file's accordion is forced open every time that file becomes the active one (so
+  switching files always "follows" onto the new file's accordion, per the spec) — it
+  cannot be permanently collapsed across a file switch, only while it stays the open file.
 
 Debug handle: `window.__layers.solo(idOrNamespaceOrNull)`; `window.__layers.state.solo`
 reads the current value.
@@ -183,9 +204,12 @@ vite.config.js            root = repo root so /fixtures/** is fetchable in dev
 src/viewer/main.js        boot: load → validate → wire panels
 src/viewer/load.js        fetching + offset maps
 src/viewer/editor.js      CodeMirror setup, decorations StateField, click → marks
-src/viewer/panels.js      files, layers, symbol, stepper DOM + right-column collapsing
+src/viewer/panels.js      files, rail, symbol, stepper DOM + right-column collapsing
+src/viewer/rail-tree.js   Layers rail v2 tree + solo-id resolution (pure)
+src/viewer/rail.js        Layers rail v2 state: selection/expanded/solo/focus + persistence
+src/viewer/resize.js      rail / right-column drag-to-resize (pure clamp + DOM wiring)
 src/viewer/nav.js         jump + history stack (pure where possible)
-src/viewer/solo.js        solo/focus-mode logic (pure)
+src/viewer/solo.js        legacy layer/namespace solo-id logic (pure)
 src/viewer/selection.js   per-mark selection logic (pure)
 src/viewer/scenes.js      presentation (Scenes) logic (pure)
 src/viewer/scenes-panel.js  Scenes panel DOM
